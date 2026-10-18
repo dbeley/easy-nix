@@ -85,6 +85,16 @@ let
         exit 1
       fi
 
+      # The configuration boots through systemd-boot, which is UEFI only. Refusing here
+      # is the honest outcome: the alternative is a machine that installs happily and
+      # then cannot boot, with no error to explain why.
+      if [ ! -d /sys/firmware/efi ]; then
+        echo "This machine booted in legacy BIOS mode; easy-nix needs UEFI." >&2
+        echo "Booting it from a BIOS-only machine would need a bios_grub partition and" >&2
+        echo "GRUB on a device node, neither of which this configuration sets." >&2
+        exit 1
+      fi
+
       if [ -z "$disk" ]; then
         echo "Disks:"
         lsblk -dno NAME,SIZE,TYPE,MODEL
@@ -139,8 +149,10 @@ let
 
       echo "==> mounting"
       umount -R /mnt 2>/dev/null || true
+      # Not guaranteed to exist on a medium built from a plain system configuration,
+      # which has no installer profile to create it.
+      mkdir -p /mnt /mnt/boot
       mount "$root" /mnt
-      mkdir -p /mnt/boot
       mount "$esp" /mnt/boot
 
       echo "==> installing easy-nix (this takes a while)"

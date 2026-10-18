@@ -130,6 +130,10 @@ Supported, as a **different product**, and marked experimental:
 Stated here rather than discovered later:
 
 - **No disk encryption, no dual boot.** Installing erases the target disk.
+- **UEFI only.** Booting goes through systemd-boot, so a machine that starts in legacy
+  BIOS mode is refused by the installer instead of being left unbootable. Supporting it
+  means a `bios_grub` partition and GRUB bound to a device node, which is a change to
+  both `modules/disk-layout.nix` and the partitioning step of the installer.
 - **Autologin and passwordless sudo** are the default, because that is what makes an
   appliance behave like one. Anyone at the keyboard is root. One line in the local
   override file changes it.
