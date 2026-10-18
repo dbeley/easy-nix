@@ -76,7 +76,23 @@ wait_for() { # wait_for <log> <marker> <seconds> [marker that means the run is o
     if [ -n "$failure" ] && grep -q -- "$failure" "$log" 2>/dev/null; then
       return 2
     fi
-    case "$(ps -o stat= -p "$qemu_pid" 2>/dev/null)" in
+    # `/proc` and shell builtins only. An earlier version asked `ps` for the process state,
+    # to tell a running child from a zombie that `kill -0` cannot distinguish - and `ps`
+    # belongs to procps, which the sandbox that runs this does not carry. The check then
+    # failed four milliseconds in, before the virtual machine had finished starting, and it
+    # failed on a machine whose shell has `ps` and passed on the one that does not. There is
+    # no external command here to be missing.
+    state=""
+    if [ -r "/proc/$qemu_pid/stat" ]; then
+      # stat is one line with no trailing newline, so `read` reports failure on it while
+      # still setting the variable - hence the `|| true`, and no `while`.
+      read -r line <"/proc/$qemu_pid/stat" || true
+      # The command name can contain spaces and parentheses, and after the last ')' comes
+      # the state.
+      state="${line#*)}"
+      state="${state%% *}"
+    fi
+    case "$state" in
     '' | Z*) return 2 ;;
     esac
     sleep 5
