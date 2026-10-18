@@ -24,6 +24,7 @@ set -uo pipefail
 : "${OVMF_FIRMWARE:?OVMF_FIRMWARE must point to OVMF_CODE.fd}"
 
 MARKER_INSTALLED="${MARKER_INSTALLED:-EASY_NIX_INSTALLED}"
+MARKER_FAILED="${MARKER_FAILED:-EASY_NIX_INSTALL_FAILED}"
 MARKER_BOOTED="${MARKER_BOOTED:-EASY_NIX_READY}"
 TIMEOUT_INSTALL="${TIMEOUT_INSTALL:-1800}"
 TIMEOUT_BOOT="${TIMEOUT_BOOT:-600}"
@@ -55,19 +56,29 @@ else
   echo "[install-test] KVM unavailable - software emulation, this will be very slow" >&2
 fi
 
-wait_for() { # wait_for <log> <marker> <seconds>
-  # Returns 0 when the marker appears, 2 when the machine is gone without it, 1 on the
+wait_for() { # wait_for <log> <marker> <seconds> [marker that means the run is over]
+  # Returns 0 when the marker appears, 2 when the run is over without it, 1 on the
   # deadline. The distinction matters: an unattended install that refuses something ends
-  # in seconds, and waiting out a 45-minute deadline to report it turns a fast diagnosis
-  # into a slow one.
+  # in seconds, and waiting out a forty-five-minute deadline to report it turns a fast
+  # diagnosis into a slow one.
+  #
+  # "Over" covers both ways a guest can stop trying: it said why, or it is simply gone.
+  # Both are needed. Watching only the process misses nothing when the machine is still
+  # up and refusing; watching only the marker reports a guest that died before it could
+  # write one. And the process check cannot be `kill -0`: a finished child that nothing
+  # has reaped is a zombie, on which `kill -0` succeeds, so ask for its state.
   local log="$1" marker="$2" deadline=$((SECONDS + $3))
+  local failure="${4:-}"
   while [ "$SECONDS" -lt "$deadline" ]; do
     if grep -q -- "$marker" "$log" 2>/dev/null; then
       return 0
     fi
-    if ! kill -0 "$qemu_pid" 2>/dev/null; then
+    if [ -n "$failure" ] && grep -q -- "$failure" "$log" 2>/dev/null; then
       return 2
     fi
+    case "$(ps -o stat= -p "$qemu_pid" 2>/dev/null)" in
+    '' | Z*) return 2 ;;
+    esac
     sleep 5
   done
   return 1
@@ -97,12 +108,12 @@ fail() { # fail <log> <message>
 
 echo "==> boot 1: the medium installs onto $disk (up to ${TIMEOUT_INSTALL}s)" >&2
 run_qemu install.log -cdrom "$ISO"
-if wait_for install.log "$MARKER_INSTALLED" "$TIMEOUT_INSTALL"; then
+if wait_for install.log "$MARKER_INSTALLED" "$TIMEOUT_INSTALL" "$MARKER_FAILED"; then
   echo "[install-test] the installer finished" >&2
 else
   rc=$?
   if [ "$rc" = 2 ]; then
-    fail install.log "the machine powered off without reporting $MARKER_INSTALLED, so the installer refused something"
+    fail install.log "the medium never reported $MARKER_INSTALLED: it said $MARKER_FAILED, or it stopped before saying either - its own words are above"
   fi
   fail install.log "the installer never reported $MARKER_INSTALLED within ${TIMEOUT_INSTALL}s"
 fi
@@ -116,7 +127,7 @@ if wait_for boot.log "$MARKER_BOOTED" "$TIMEOUT_BOOT"; then
 else
   rc=$?
   if [ "$rc" = 2 ]; then
-    fail boot.log "the installed system powered off without reporting $MARKER_BOOTED"
+    fail boot.log "the installed system stopped without reporting $MARKER_BOOTED - nothing was written by the medium on this boot, so the log above is the installed machine's"
   fi
   fail boot.log "the installed system never reported $MARKER_BOOTED within ${TIMEOUT_BOOT}s"
 fi
