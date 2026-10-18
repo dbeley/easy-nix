@@ -133,6 +133,34 @@
 
   security.sudo.wheelNeedsPassword = false;
 
+  # --- the operator's only view of a headless machine -----------------------
+  # The target is a machine someone would otherwise throw away, often with no display
+  # attached, and a boot that says nothing anywhere is a boot nobody can diagnose. A
+  # serial console is that view, and it is also what the install test reads to see an
+  # *installed* system come up - the assertion that procedure exists for.
+  #
+  # `consoleLogLevel` rather than `loglevel=` in `kernelParams`: nixpkgs appends its own
+  # `loglevel=` after `kernelParams`, so the kernel argument loses to it and the console
+  # stays mute, which makes every later failure undiagnosable.
+  boot.kernelParams = [ "console=ttyS0,115200" ];
+  boot.consoleLogLevel = 7;
+
+  systemd.services.easy-nix-ready = {
+    description = "Announce that the machine reached userspace";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      # Written to /dev/ttyS0 explicitly: /dev/console is not reliable for this, since
+      # which device it points at depends on the order of the `console=` arguments.
+      msg="EASY_NIX_READY label=${config.system.nixos.label}"
+      echo "$msg" > /dev/ttyS0 || true
+      echo "$msg" > /dev/console || true
+    '';
+  };
+
   # --- shell invocation -----------------------------------------------------
   environment.systemPackages = with pkgs; [
     git

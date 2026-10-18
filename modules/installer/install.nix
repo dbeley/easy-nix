@@ -21,6 +21,7 @@
 */
 {
   config,
+  lib,
   pkgs,
   inputs,
   flakeSelf,
@@ -176,6 +177,35 @@ let
   };
 in
 {
+  # Only where a host asked for it (`easyNix.autoInstall`): the medium the install test
+  # boots, never the released one. It announces the outcome on the serial console in the
+  # same shape as the machine's own marker, so a machine can wait for it, and it powers
+  # the machine off rather than leaving it waiting for someone.
+  systemd.services.easy-nix-autoinstall = lib.mkIf (cfg.autoInstall != null) {
+    description = "Install easy-nix onto an attached disk, unattended";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      # An install takes as long as it takes; the caller has its own deadline.
+      TimeoutStartSec = "infinity";
+    };
+    script = ''
+      set -x
+      if ${install}/bin/easy-nix-install --disk ${lib.escapeShellArg cfg.autoInstall} --yes; then
+        msg="EASY_NIX_INSTALLED device=${cfg.autoInstall}"
+      else
+        msg="EASY_NIX_INSTALL_FAILED device=${cfg.autoInstall}"
+      fi
+      echo "$msg" > /dev/ttyS0 || true
+      echo "$msg" > /dev/console || true
+      sync
+      systemctl poweroff --no-block || true
+    '';
+  };
+
   # The configuration being installed, on the medium. This is what makes the install
   # offline-capable and reproducible: what you boot is what gets installed.
   environment.etc."easy-nix".source = flakeSelf.outPath;

@@ -93,10 +93,20 @@ sudo nixos-rebuild boot --flake /etc/easy-nix#easy-nix
 That last one is the update path the timers run: if it fails, the appliance cannot
 update itself, which is the whole point of the project.
 
-## Known gap
+## The automated version
 
-This is a manual procedure, so it only runs when someone remembers. An automated version
-needs a way in without a screen, and the medium does not have one today: a serial getty
-(or an image variant that runs the installer at boot and writes its own marker to
-`/dev/ttyS0`, in the shape of `EASY_NIX_READY`) would make it testable in CI, on every
-push. Until then, this document is the test.
+This procedure is a convenience for a human. The same path runs unattended:
+
+```sh
+nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-test
+```
+
+It boots a light medium that installs itself (`easyNix.autoInstall`), waits for the
+installer to report `EASY_NIX_INSTALLED` on the serial console, then boots the disk it has
+just written and waits for the installed machine to report `EASY_NIX_READY` - the marker
+every easy-nix machine writes when it reaches userspace, which is what makes the second
+assertion possible without a screen.
+
+What it does not cover, and what this document is still for: the *released* medium, which
+is larger and offline-capable where the test's is not, a real physical disk rather than a
+sparse file, and anything about the applications once the machine is up.

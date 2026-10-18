@@ -31,6 +31,22 @@ in
       '';
     };
 
+    autoInstall = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/dev/vda";
+      description = ''
+        Install onto this whole block device at boot, without a prompt and without a
+        screen, then power off. `null`, the default, disables it.
+
+        It exists so the install path can be exercised by a machine: the installer is
+        the one part of this system that no test had ever run, because a manual
+        procedure only happens when someone remembers. Nothing that ships sets this -
+        a medium that installed itself over whatever disk was attached is not a medium
+        anyone should hand out.
+      '';
+    };
+
     configDir = mkOption {
       type = types.path;
       default = "/etc/easy-nix";

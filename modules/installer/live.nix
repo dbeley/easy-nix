@@ -29,25 +29,9 @@
 }:
 {
   image.modules.iso = {
-    boot.kernelParams = [
-      "console=ttyS0,115200"
-      "console=tty0"
-    ];
-    boot.consoleLogLevel = 7;
-
-    systemd.services.easy-nix-ready = {
-      description = "Announce that the live medium reached userspace";
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        msg="EASY_NIX_READY label=${config.system.nixos.label}"
-        echo "$msg" > /dev/ttyS0 || true
-        echo "$msg" > /dev/console || true
-      '';
-    };
+    # The serial console, the kernel verbosity and the ready marker live in
+    # `modules/base.nix`: an installed machine needs them as much as a medium does, and
+    # the install test reads the marker from the system it has just installed.
 
     isoImage = {
       makeBiosBootable = true;

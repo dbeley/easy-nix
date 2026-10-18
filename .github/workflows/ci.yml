@@ -155,6 +155,15 @@ jobs:
           # ./result that no longer holds the ISO.
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+      - name: Install, then boot what was installed
+        run: |
+          # The path nothing else covers: the installer partitioning a disk, and the
+          # installed system starting on its own. It builds its own light medium, which
+          # is why it runs here rather than in the fast job: the closure is warm, and a
+          # medium is what this job exists to build.
+          # --no-link for the same reason as above: the artifact upload below reads
+          # result/iso/*.iso, so ./result has to keep pointing at the ISO.
+          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.install-test
       - uses: actions/upload-artifact@v7
         with:
           name: easy-nix-iso

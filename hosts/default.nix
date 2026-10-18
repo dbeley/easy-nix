@@ -41,14 +41,15 @@ let
 
   # Two instruments the release page publishes instead of a promise:
   #
-  #   - a closure manifest, listing every store path an image is made of, with its hash
-  #     in both encodings, so a reader can check what they downloaded against their own
+  #   - a closure manifest, listing every store path a system is made of, with its hash
+  #     in both encodings, so a reader can check what they installed against their own
   #     store or against cache.nixos.org, without trusting whoever ran the build;
   #   - a size budget, which turns "the image grew" into a red check on the commit that
   #     caused it, instead of a surprise at the last step of a release job.
   #
-  # Both are per flavour and per system, because the appliance, the live medium and the
-  # ARM image share almost nothing.
+  # Both are keyed by flavour and system, and only a host that can produce them has
+  # them: a live medium has no evaluable toplevel to describe, and an image-rooted
+  # manifest would describe nothing.
   pkgsFor = system: inputs.nixpkgs.legacyPackages.${system};
 
   mkClosureManifest =
@@ -81,6 +82,13 @@ let
       modules = [ ./easy-nix-live-test ];
     };
 
+    # Light for the same reason, plus the installer and an unattended install onto the
+    # disk the install test attaches. This is the only host that partitions anything.
+    easy-nix-live-install-test = mkHost {
+      hostName = "easy-nix-live-install-test";
+      modules = [ ./easy-nix-live-install-test ];
+    };
+
     # ARM: an SD-card image per board, reduced application set. See README.
     easy-nix-arm = mkHost {
       hostName = "easy-nix-arm";
@@ -94,6 +102,7 @@ let
     x86_64-linux = {
       iso = nixosConfigurations.easy-nix-live.config.system.build.images.iso;
       iso-test = nixosConfigurations.easy-nix-live-test.config.system.build.images.iso;
+      iso-install-test = nixosConfigurations.easy-nix-live-install-test.config.system.build.images.iso;
       vm = nixosConfigurations.easy-nix.config.system.build.vm;
 
       # The closure of the system an install produces. This is the claim the release page
@@ -136,6 +145,8 @@ in
     easy-nix = nixosConfigurations.easy-nix.config.system.build.toplevel.drvPath;
     easy-nix-live = nixosConfigurations.easy-nix-live.config.system.build.images.iso.drvPath;
     easy-nix-live-test = nixosConfigurations.easy-nix-live-test.config.system.build.images.iso.drvPath;
+    easy-nix-live-install-test =
+      nixosConfigurations.easy-nix-live-install-test.config.system.build.images.iso.drvPath;
     easy-nix-arm = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card.drvPath;
   };
 
@@ -144,6 +155,7 @@ in
       inherit inputs;
       iso = packages.x86_64-linux.iso-test;
       isoRelease = packages.x86_64-linux.iso;
+      isoInstallTest = packages.x86_64-linux.iso-install-test;
     };
   };
 }
