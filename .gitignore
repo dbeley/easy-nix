@@ -6,3 +6,4 @@ serial.log
 RELEASE_NOTES.md
 SHA256SUMS
 .eval.log
+.build.log

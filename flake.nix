@@ -95,7 +95,9 @@
                   chmod -R u+w src
                   rm -rf src/.git
                   cd src
-                  treefmt --fail-on-change
+                  # --no-cache: the build sandbox has no writable HOME for treefmt's
+                  # evaluation cache, and a one-shot check has no use for one anyway.
+                  treefmt --no-cache --fail-on-change
                   touch $out
                 '';
 
