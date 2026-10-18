@@ -41,6 +41,18 @@
       volumeID = "EASY_NIX";
     };
 
+    # A medium is the one system that has to mount filesystems it did not boot from: the
+    # installer formats an ext4 root and a vfat ESP, and mounting either needs the driver
+    # in this system's closure. A medium has no `fileSystems` of its own, so nothing else
+    # pulls them in, and `mount` then fails on a partition `mkfs` has just written
+    # perfectly - it reports a bad superblock, which sends you looking at the wrong piece
+    # of the machine. Naming them here also makes the build resolve them, so a driver that
+    # does not exist fails the build instead of the installation.
+    boot.kernelModules = [
+      "ext4"
+      "vfat"
+    ];
+
     # iso-image.nix assigns this without `mkDefault`, so overriding it has to be a force.
     image.baseName = lib.mkForce "easy-nix-${config.system.nixos.label}";
 
