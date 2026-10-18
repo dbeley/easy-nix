@@ -87,9 +87,12 @@ wait_for() { # wait_for <log> <marker> <seconds> [marker that means the run is o
       # stat is one line with no trailing newline, so `read` reports failure on it while
       # still setting the variable - hence the `|| true`, and no `while`.
       read -r line <"/proc/$qemu_pid/stat" || true
-      # The command name can contain spaces and parentheses, and after the last ')' comes
-      # the state.
-      state="${line#*)}"
+      # The state is the field after the command name. That name is in parentheses and may
+      # contain spaces, so take everything after the LAST ") " and then up to the next
+      # space. Chopping at the first space of " R 1 1234 ..." yields the empty string, which
+      # this function reads as "the machine is gone" - and it then failed three
+      # milliseconds after starting a virtual machine that was booting perfectly.
+      state="${line##*) }"
       state="${state%% *}"
     fi
     case "$state" in
