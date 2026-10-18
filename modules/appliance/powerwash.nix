@@ -91,7 +91,7 @@ let
   };
 in
 {
-  config = lib.mkIf cfg.powerwash.enable {
+  config = lib.mkIf (cfg.enable && cfg.powerwash.enable) {
     environment.systemPackages = [
       powerwash
       (pkgs.makeDesktopItem {

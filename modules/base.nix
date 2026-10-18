@@ -8,6 +8,7 @@
     - the desktop (see `modules/desktop/`)
 */
 {
+  config,
   lib,
   pkgs,
   user,
@@ -123,7 +124,11 @@
       "audio"
     ];
     shell = pkgs.bash;
-    # Password is set in the image flavour, never here.
+    # Only applied while the account has no password of its own. `users.mutableUsers` is
+    # true, so `passwd` replaces it and no rebuild puts it back.
+    initialPassword = lib.mkIf (
+      config.easyNix.user.initialPassword != null
+    ) config.easyNix.user.initialPassword;
   };
 
   security.sudo.wheelNeedsPassword = false;

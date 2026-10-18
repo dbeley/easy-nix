@@ -3,18 +3,12 @@
   needs is declared here so a host can turn a piece off without editing the
   services themselves.
 */
-{
-  config,
-  lib,
-  ...
-}:
+{ lib, ... }:
 let
   inherit (lib)
     mkOption
     types
     ;
-
-  inherit (config) easyNix;
 in
 {
   options.easyNix = {
@@ -123,12 +117,5 @@ in
         '';
       };
     };
-  };
-
-  config = {
-    warnings =
-      lib.optional
-        (!easyNix.enable && (easyNix.update.enable || easyNix.update.upgrade || easyNix.powerwash.enable))
-        "easy-nix: easyNix.enable is false, so the update and powerwash services will run without the override hook being documented to the user.";
   };
 }

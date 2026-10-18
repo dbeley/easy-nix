@@ -41,14 +41,18 @@ in
 
   config = lib.mkMerge [
     {
-      warnings = lib.optional (cfg.localOverrideFile != localOverrideFile) ''
-        easy-nix: easyNix.localOverrideFile is ${cfg.localOverrideFile}, but the path
-        imported at build time is fixed to ${localOverrideFile}. The override file will
-        not be read.
-      '';
+      warnings =
+        lib.optional (cfg.localOverrideFile != localOverrideFile) ''
+          easy-nix: easyNix.localOverrideFile is ${cfg.localOverrideFile}, but the path
+          imported at build time is fixed to ${localOverrideFile}. The override file will
+          not be read.
+        ''
+        ++ lib.optional (
+          !cfg.enable && (cfg.update.enable || cfg.update.upgrade)
+        ) "easy-nix: easyNix.enable is false, so the update services are disabled.";
     }
 
-    (lib.mkIf cfg.update.enable {
+    (lib.mkIf (cfg.enable && cfg.update.enable) {
       systemd.services.easy-nix-update-config = {
         description = "easy-nix: fast-forward the configuration and update Flatpaks";
         wants = [ "network-online.target" ];
@@ -122,7 +126,7 @@ in
       };
     })
 
-    (lib.mkIf cfg.update.upgrade {
+    (lib.mkIf (cfg.enable && cfg.update.upgrade) {
       systemd.services.easy-nix-upgrade = {
         description = "easy-nix: build the next system generation";
         wants = [ "network-online.target" ];
@@ -180,7 +184,7 @@ in
     # Desktop launchers, so an update never requires a terminal. The terminal is named
     # explicitly: niri has no concept of `Terminal=true`, so an entry that prompts would
     # otherwise run detached from any tty, and the operator would see nothing at all.
-    (lib.mkIf cfg.update.enable {
+    (lib.mkIf (cfg.enable && cfg.update.enable) {
       environment.systemPackages = [
         (pkgs.makeDesktopItem {
           name = "easy-nix-update";
