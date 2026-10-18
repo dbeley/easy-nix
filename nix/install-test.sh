@@ -56,10 +56,17 @@ else
 fi
 
 wait_for() { # wait_for <log> <marker> <seconds>
+  # Returns 0 when the marker appears, 2 when the machine is gone without it, 1 on the
+  # deadline. The distinction matters: an unattended install that refuses something ends
+  # in seconds, and waiting out a 45-minute deadline to report it turns a fast diagnosis
+  # into a slow one.
   local log="$1" marker="$2" deadline=$((SECONDS + $3))
   while [ "$SECONDS" -lt "$deadline" ]; do
     if grep -q -- "$marker" "$log" 2>/dev/null; then
       return 0
+    fi
+    if ! kill -0 "$qemu_pid" 2>/dev/null; then
+      return 2
     fi
     sleep 5
   done
@@ -93,7 +100,11 @@ run_qemu install.log -cdrom "$ISO"
 if wait_for install.log "$MARKER_INSTALLED" "$TIMEOUT_INSTALL"; then
   echo "[install-test] the installer finished" >&2
 else
-  fail install.log "the installer never reported $MARKER_INSTALLED"
+  rc=$?
+  if [ "$rc" = 2 ]; then
+    fail install.log "the machine powered off without reporting $MARKER_INSTALLED, so the installer refused something"
+  fi
+  fail install.log "the installer never reported $MARKER_INSTALLED within ${TIMEOUT_INSTALL}s"
 fi
 kill "$qemu_pid" 2>/dev/null
 wait "$qemu_pid" 2>/dev/null
@@ -103,7 +114,11 @@ run_qemu boot.log
 if wait_for boot.log "$MARKER_BOOTED" "$TIMEOUT_BOOT"; then
   echo "[install-test] the installed system reached userspace" >&2
 else
-  fail boot.log "the installed system never reported $MARKER_BOOTED"
+  rc=$?
+  if [ "$rc" = 2 ]; then
+    fail boot.log "the installed system powered off without reporting $MARKER_BOOTED"
+  fi
+  fail boot.log "the installed system never reported $MARKER_BOOTED within ${TIMEOUT_BOOT}s"
 fi
 kill "$qemu_pid" 2>/dev/null
 

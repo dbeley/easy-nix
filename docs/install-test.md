@@ -3,7 +3,9 @@
 The boot test proves the medium reaches userspace. It proves **nothing** about the
 installer: `easy-nix-install` has never partitioned a disk in that test, and no installed
 system has ever been started. This procedure closes that gap by hand, on a machine with
-KVM, until an automated version exists (see "Known gap" below).
+KVM. The same path also runs unattended (see "The automated version" below); this document
+stays for the parts it does not cover - the released medium, a physical disk, and the
+applications once the machine is up.
 
 Run it on any NixOS machine with `/dev/kvm` and about 60 GB free.
 
@@ -31,7 +33,13 @@ the install actually writes, not 32 GB.
 
 ## 3. Boot the medium
 
+Realise the firmware first, once per machine: `nix eval` prints a store path without
+building it, so a machine that has never built that output gets `Could not open
+'…OVMF_CODE.fd': No such file or directory`, which blames the firmware rather than the
+missing build. Note the `fd`: it is one of OVMF's named outputs, not its default one.
+
 ```sh
+nix build --no-link nixpkgs#OVMF.fd
 nix shell nixpkgs#qemu -c qemu-system-x86_64 \
   -M q35 -m 4096 -smp 4 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$(nix eval --raw nixpkgs#OVMF.firmware)" \

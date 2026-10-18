@@ -141,8 +141,23 @@ let
       sgdisk --zap-all "$disk"
       sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "$disk"
       sgdisk -n 2:0:0 -t 2:8300 -c 2:NIXROOT "$disk"
-      partprobe "$disk" || true
+      # `sgdisk` returning does not mean the partitions exist yet: the kernel revalidates
+      # the table in the background. Measured in a virtual machine, the mount of the root
+      # partition failed with a bad superblock while the kernel only announced partition 2
+      # a second later - the format had gone to a device node the kernel had not mapped.
+      # `partprobe` is `parted`'s, and this wrapper's PATH carries util-linux instead, so
+      # it was never there to ask; the `|| true` that swallowed the complaint hid that.
+      partx -u "$disk" 2>/dev/null || true
       udevadm settle || true
+      for _ in $(seq 1 40); do
+        [ -b "$esp" ] && [ -b "$root" ] && break
+        sleep 0.5
+      done
+      if [ ! -b "$esp" ] || [ ! -b "$root" ]; then
+        echo "the kernel never announced $esp and $root:" >&2
+        lsblk "$disk" >&2 || true
+        exit 1
+      fi
 
       echo "==> formatting"
       mkfs.fat -F32 -n ESP "$esp"
