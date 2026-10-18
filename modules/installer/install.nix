@@ -185,8 +185,12 @@ in
 
   # Everything needed to *evaluate* the configuration on the medium. Without the
   # inputs in the store, `nixos-install` would have to reach the network to resolve
-  # the flake it is currently running from.
-  isoImage.storeContents = [ flakeSelf.outPath ] ++ (with inputs; [
+  # the flake it is currently running from. Set inside the variant: `isoImage` is
+  # declared by the image module, which only that variant imports.
+  image.modules.iso.isoImage.storeContents = [
+    flakeSelf.outPath
+  ]
+  ++ (with inputs; [
     flake-parts
     home-manager
     nixos-hardware

@@ -37,18 +37,18 @@ else
 fi
 
 case "$MODE" in
-  bios) ;;
-  efi)
-    [ -n "${OVMF_FIRMWARE:-}" ] || {
-      echo "OVMF_FIRMWARE required in efi mode" >&2
-      exit 2
-    }
-    args+=(-drive "if=pflash,format=raw,readonly=on,file=$OVMF_FIRMWARE")
-    ;;
-  *)
-    echo "unknown MODE: $MODE" >&2
+bios) ;;
+efi)
+  [ -n "${OVMF_FIRMWARE:-}" ] || {
+    echo "OVMF_FIRMWARE required in efi mode" >&2
     exit 2
-    ;;
+  }
+  args+=(-drive "if=pflash,format=raw,readonly=on,file=$OVMF_FIRMWARE")
+  ;;
+*)
+  echo "unknown MODE: $MODE" >&2
+  exit 2
+  ;;
 esac
 
 if [ -z "$MARKER" ]; then

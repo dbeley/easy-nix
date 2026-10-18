@@ -14,7 +14,7 @@ let
     types
     ;
 
-  easyNix = config.easyNix;
+  inherit (config) easyNix;
 in
 {
   options.easyNix = {
@@ -126,8 +126,9 @@ in
   };
 
   config = {
-    warnings = lib.optional (
-      !easyNix.enable && (easyNix.update.enable || easyNix.update.upgrade || easyNix.powerwash.enable)
-    ) "easy-nix: easyNix.enable is false, so the update and powerwash services will run without the override hook being documented to the user.";
+    warnings =
+      lib.optional
+        (!easyNix.enable && (easyNix.update.enable || easyNix.update.upgrade || easyNix.powerwash.enable))
+        "easy-nix: easyNix.enable is false, so the update and powerwash services will run without the override hook being documented to the user.";
   };
 }

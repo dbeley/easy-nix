@@ -53,6 +53,8 @@
         inherit (hosts) nixosConfigurations;
       };
 
+      flake.evalTargets = hosts.evalTargets;
+
       perSystem =
         { system, ... }:
         let
@@ -93,10 +95,12 @@
             in
             pkgs.mkShell {
               inherit (pre-commit) shellHook;
-              packages = pre-commit.enabledPackages ++ (with pkgs; [
-                nixos-rebuild
-                qemu_kvm
-              ]);
+              packages =
+                pre-commit.enabledPackages
+                ++ (with pkgs; [
+                  nixos-rebuild
+                  qemu_kvm
+                ]);
             };
           # `formatter` is deliberately not set here: treefmt-nix's flakeModule
           # already points it at the treefmt wrapper, which is what makes `nix fmt`

@@ -145,7 +145,7 @@ nix build .#packages.x86_64-linux.iso-test  # the light image the boot tests use
 nix build .#packages.x86_64-linux.vm        # boot the system in a VM
 nix build .#packages.aarch64-linux.sd-card  # the SD-card image
 
-just eval                                    # evaluate every host
+nix eval --raw .#evalTargets.<host>          # evaluate one host, the honest way
 just boot-test                               # boot the light image, BIOS + EFI
 just fmt                                     # treefmt: nixfmt, statix, deadnix, shfmt
 ```
@@ -156,6 +156,12 @@ The `iso` job in CI exists for that reason.
 Do not run `nix flake check` on a machine with little memory: it evaluates all four
 host configurations at once. `just eval` does them one at a time, `just check` builds
 only the formatting checks.
+
+`evalTargets` exists because "does this host evaluate" has four different answers. A
+host that only exists to produce a medium — the two live images and the ARM one — is
+evaluated through its image variant, which is where its filesystem layout comes from.
+Evaluating `system.build.toplevel` on those fails an assertion about a missing root
+filesystem, correctly: there is no such system.
 
 ## Layout
 

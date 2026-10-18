@@ -12,12 +12,14 @@ fmt:
 check:
     nix build .#checks.x86_64-linux.pre-commit-check -L
 
-# Evaluate every host, one at a time, to stay within a small machine's memory
+# Evaluate every host, one at a time, to stay within a small machine's memory.
+# Uses the per-host target from the flake: for a host that exists to produce an image,
+# that is its image variant rather than a top-level nobody boots.
 eval:
     #!/usr/bin/env bash
     for h in easy-nix easy-nix-live easy-nix-live-test easy-nix-arm; do
-      echo "==> $h"
-      nix eval --no-write-lock-file ".#nixosConfigurations.$h.config.system.build.toplevel.drvPath"
+      printf '%-22s ' "$h"
+      nix eval --raw ".#evalTargets.$h"
     done
 
 # The installer ISO

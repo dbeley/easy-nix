@@ -19,6 +19,16 @@
   system.stateVersion = stateVersion;
   networking.hostName = lib.mkDefault hostName;
 
+  # The newest stable kernel.
+  #
+  # `mkOverride 1200` rather than a plain value or `mkDefault`, and the number is the
+  # whole point: a board profile that pins its own kernel does so with `mkDefault`
+  # (priority 1000), which wins over this. So x86 gets the latest kernel, and the
+  # Raspberry Pi keeps the downstream kernel it actually needs. With a plain assignment
+  # the two would collide; with `mkDefault` they would collide too, since both would sit
+  # at the same priority.
+  boot.kernelPackages = lib.mkOverride 1200 pkgs.linuxPackages_latest;
+
   # --- networking -----------------------------------------------------------
   networking.networkmanager = {
     enable = true;

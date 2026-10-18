@@ -28,19 +28,22 @@
     inputs.nixos-hardware.nixosModules.raspberry-pi-4
   ];
 
-  # Serial console on the GPIO header, which is how a board with no screen is
-  # debugged and how a boot test would work if one is ever added.
-  boot.kernelParams = [
-    "console=ttyAMA0,115200"
-    "console=tty1"
-  ];
+  # Everything that only makes sense on a bootable medium lives inside the `sd-card`
+  # variant: `sdImage` is declared by the image module, which the host configuration
+  # does not import.
+  image.modules.sd-card = {
+    # Serial console on the GPIO header, which is how a board with no screen is
+    # debugged.
+    boot.kernelParams = [
+      "console=ttyAMA0,115200"
+      "console=tty1"
+    ];
 
-  # Named after the board family rather than after x86 image conventions.
-  image.baseName = "easy-nix-arm-${config.system.nixos.label}";
+    # Named after the board family rather than after x86 image conventions.
+    image.baseName = "easy-nix-arm-${config.system.nixos.label}";
 
-  # The SD image module owns the partition layout and the bootloader; nothing here
-  # declares filesystems, and there is no ISO to make bootable on aarch64.
-  sdImage.compressImage = true;
+    sdImage.compressImage = true;
+  };
 
   easyNix = {
     enable = true;

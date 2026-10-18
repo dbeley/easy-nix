@@ -84,6 +84,20 @@ in
 {
   inherit nixosConfigurations packages;
 
+  # What it means to "evaluate this host", one honest answer per host.
+  #
+  # A host that only exists to produce an image is evaluated through its image variant:
+  # its plain top-level has no filesystem layout *on purpose*, because the image module
+  # declares one (which is also why `nixos-rebuild switch` on `easy-nix-live` is
+  # meaningless and fails with an assertion about a missing root filesystem). Evaluating
+  # `system.build.toplevel` there proves nothing and fails loudly for the wrong reason.
+  evalTargets = {
+    easy-nix = nixosConfigurations.easy-nix.config.system.build.toplevel.drvPath;
+    easy-nix-live = nixosConfigurations.easy-nix-live.config.system.build.images.iso.drvPath;
+    easy-nix-live-test = nixosConfigurations.easy-nix-live-test.config.system.build.images.iso.drvPath;
+    easy-nix-arm = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card.drvPath;
+  };
+
   bootTests = {
     x86_64-linux = import ./boot-tests.nix {
       inherit inputs;

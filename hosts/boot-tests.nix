@@ -19,7 +19,11 @@
   explicitly (`--option extra-sandbox-paths /dev/kvm`), otherwise QEMU silently falls
   back to software emulation and the job times out instead of failing.
 */
-{ inputs, iso, isoRelease }:
+{
+  inputs,
+  iso,
+  isoRelease,
+}:
 let
   pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
 
@@ -29,30 +33,32 @@ let
       image,
       mode,
     }:
-    pkgs.runCommand "easy-nix-boot-test-${name}" {
-      nativeBuildInputs = with pkgs; [
-        qemu_kvm
-        bash
-        coreutils
-        gnugrep
-        findutils
-      ];
-      MARKER = "EASY_NIX_READY";
-      TIMEOUT = "900";
-      MODE = mode;
-      QEMU = "${pkgs.qemu_kvm}/bin/qemu-kvm";
-      OVMF_FIRMWARE = "${pkgs.OVMF.firmware}/OVMF_CODE.fd";
-    } ''
-      mkdir -p $out
-      export ISO="$(find ${image}/iso -name '*.iso' | head -1)"
-      # The runner writes serial.log into the current directory, and the build
-      # directory is read-only; copying it into $out is what makes a failed boot
-      # debuggable after the fact.
-      cd "$TMPDIR"
-      ${pkgs.bash}/bin/bash ${../scripts/nix/qemu-run.sh}
-      cp serial.log $out/serial.log
-      echo "mode=${mode}" > $out/result
-    '';
+    pkgs.runCommand "easy-nix-boot-test-${name}"
+      {
+        nativeBuildInputs = with pkgs; [
+          qemu_kvm
+          bash
+          coreutils
+          gnugrep
+          findutils
+        ];
+        MARKER = "EASY_NIX_READY";
+        TIMEOUT = "900";
+        MODE = mode;
+        QEMU = "${pkgs.qemu_kvm}/bin/qemu-kvm";
+        OVMF_FIRMWARE = "${pkgs.OVMF.firmware}/OVMF_CODE.fd";
+      }
+      ''
+        mkdir -p $out
+        export ISO="$(find ${image}/iso -name '*.iso' | head -1)"
+        # The runner writes serial.log into the current directory, and the build
+        # directory is read-only; copying it into $out is what makes a failed boot
+        # debuggable after the fact.
+        cd "$TMPDIR"
+        ${pkgs.bash}/bin/bash ${../scripts/nix/qemu-run.sh}
+        cp serial.log $out/serial.log
+        echo "mode=${mode}" > $out/result
+      '';
 in
 {
   boot-test-bios = mkBootTest {

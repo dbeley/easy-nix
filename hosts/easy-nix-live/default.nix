@@ -20,5 +20,13 @@
     ../../modules/installer
   ];
 
-  easyNix.enable = true;
+  easyNix = {
+    enable = true;
+    # A live medium has no configuration checkout to fast-forward and nothing worth
+    # resetting: the installer creates both on the target. Leaving the timers on would
+    # only produce a failed unit and a notification nobody can act on.
+    update.enable = false;
+    update.upgrade = false;
+    powerwash.enable = false;
+  };
 }

@@ -9,11 +9,11 @@
 { pkgs, ... }:
 {
   environment.systemPackages = with pkgs; [
-    libreoffice-fresh
+    libreoffice
     # French spelling and hyphenation, so the suite is usable out of the box.
     hunspellDicts.fr-moderne
     hyphenDicts.fr-fr
-    poppler_utils # pdftotext/pdfinfo: what "open a PDF" means in a terminal
+    poppler-utils # pdftotext/pdfinfo: what "open a PDF" means in a terminal
     zathura
   ];
 }
