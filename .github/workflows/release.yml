@@ -113,6 +113,12 @@ jobs:
           nix run nixpkgs#minisign -- -S -s ~/.minisign/easy-nix.key -m SHA256SUMS
           rm -f ~/.minisign/easy-nix.key
           cat SHA256SUMS.minisig
+          # Verify the signature against the key the repository publishes, not against
+          # the one that just signed: they are two independent files, and the reader
+          # only has the first. Without this, a secret whose public half was never
+          # committed produces a release whose documented check fails for everyone.
+          nix run nixpkgs#minisign -- -V -p easy-nix.pub -m SHA256SUMS
+          echo "signed with the key committed as easy-nix.pub"
       - name: Split the image for GitHub's asset limit
         run: |
           # GitHub refuses any release asset of 2 GiB or more, and this image is about
