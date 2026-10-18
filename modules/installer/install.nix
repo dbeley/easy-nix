@@ -167,8 +167,14 @@ let
       umount -R /mnt 2>/dev/null || true
       # Not guaranteed to exist on a medium built from a plain system configuration,
       # which has no installer profile to create it.
-      mkdir -p /mnt /mnt/boot
+      mkdir -p /mnt
       mount "$root" /mnt
+      # After the root, never before: a `boot` directory made on the medium's own /mnt is
+      # hidden the moment the target's root is mounted over it, and the filesystem that was
+      # just created on the target has no `boot` of its own. In the other order the ESP
+      # mount fails with "the mount point does not exist", which reads like a problem with
+      # the ESP and is a problem with the order.
+      mkdir -p /mnt/boot
       mount "$esp" /mnt/boot
 
       echo "==> installing easy-nix (this takes a while)"
