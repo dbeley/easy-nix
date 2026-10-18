@@ -45,6 +45,14 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Evaluate ${{ matrix.host }}
         run: nix eval --raw .#evalTargets.${{ matrix.host }}
+      - name: Evaluate the release artifacts
+        run: |
+          # The size budgets and the closure manifest are part of every release page, so
+          # an evaluation error in one of them is a broken release forty minutes into a
+          # build. Evaluating them costs seconds.
+          nix eval --raw .#packages.x86_64-linux.size-budget-installer.drvPath
+          nix eval --raw .#packages.x86_64-linux.size-budget-test.drvPath
+          nix eval --raw .#packages.x86_64-linux.closure-manifest-appliance.drvPath
 
   boot-test:
     runs-on: ubuntu-latest
@@ -66,6 +74,12 @@ jobs:
           # enough, because the build runs in a sandbox that does not expose it.
           nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
           nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
+      - name: Size budget of the light image
+        run: |
+          # This job already builds that image, so the budget is nearly free here - and
+          # it has to run somewhere: a ceiling nothing ever measures against is not a
+          # ceiling. The installer's own budget runs in the iso job, which builds the ISO.
+          nix build --no-link -L .#packages.x86_64-linux.size-budget-test
 
   iso:
     # Not on pull requests: a full ISO build is the most expensive thing here, and it
@@ -114,6 +128,16 @@ jobs:
           # user downloaded into, where `result/iso/...` does not exist.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
           cat SHA256SUMS
+      - name: Size budget and closure manifest
+        run: |
+          # Nearly free here: the image and the closure are already built, so these only
+          # add their own derivations.
+          #
+          # --no-link, and it is not cosmetic: either build repoints ./result, and the
+          # artifact upload below reads result/iso/*.iso. Without it the job goes green
+          # while uploading a 231-byte archive with no image in it.
+          nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
+          nix build --no-link -L .#packages.x86_64-linux.closure-manifest-appliance
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

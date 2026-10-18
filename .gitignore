@@ -10,3 +10,8 @@ SHA256SUMS
 .build.log
 .boot.log
 .ci-watch.log
+
+# Written by git-hooks when the development shell is entered. It is a local artefact
+# of the tool, not part of the repository, and it used to show up as an untracked file
+# in every `git status`.
+.pre-commit-config.yaml

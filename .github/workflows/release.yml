@@ -60,12 +60,59 @@ jobs:
           # ./result that no longer holds the ISO.
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+      - name: Size budget and closure manifest
+        run: |
+          # The budget fails the release if the image drifted past its measured ceiling
+          # (docs/budget.md). The manifest is what the release page publishes instead of a
+          # promise, and it describes the system an install produces - not the medium:
+          # rooted at the image it would come out with a single entry, the ISO file,
+          # because a compressed squashfs hides the store paths inside it from a
+          # reference scan.
+          #
+          # Both keep ./result pointing at the ISO: the budget through --no-link, the
+          # manifest through an out-link that .gitignore already covers.
+          nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
+          nix build -L --out-link result-manifest .#packages.x86_64-linux.closure-manifest-appliance
       - name: Checksums
         run: |
           # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
           # user downloaded into, where `result/iso/...` does not exist.
+          #
+          # The manifest is covered too: this file is the one document that lists
+          # everything the release publishes, and it is the one that gets signed.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
+          (cd result-manifest && sha256sum closure-*.json closure-sri-*.tsv) >> SHA256SUMS
           cat SHA256SUMS
+      - name: Detect the signing key
+        id: sig
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          # Signing is optional, and its absence is announced rather than fatal: a release
+          # whose artifacts are built, boot-tested and attested should not be thrown away
+          # because a key is missing. The notes below say which of the two happened, so the
+          # page never claims a signature the download does not carry.
+          if [ -n "$MINISIGN_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::MINISIGN_SECRET_KEY is absent - the release will not be signed"
+          fi
+      - name: Sign the checksums
+        if: steps.sig.outputs.enabled == 'true'
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          # minisign reads its password neither from the environment nor from stdin: it
+          # asks the terminal, which CI does not have. The key in the secret must therefore
+          # be UNENCRYPTED (`minisign -G -W`), the only non-interactive mode upstream
+          # supports. The public key is committed as easy-nix.pub, so a signature is
+          # checkable without GitHub being reachable or trusted.
+          mkdir -p ~/.minisign
+          printf '%s\n' "$MINISIGN_KEY" > ~/.minisign/easy-nix.key
+          nix run nixpkgs#minisign -- -S -s ~/.minisign/easy-nix.key -m SHA256SUMS
+          rm -f ~/.minisign/easy-nix.key
+          cat SHA256SUMS.minisig
       - name: Split the image for GitHub's asset limit
         run: |
           # GitHub refuses any release asset of 2 GiB or more, and this image is about
@@ -85,6 +132,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SIGNED: ${{ steps.sig.outputs.enabled }}
         run: |
           ISO=$(basename "$(ls result/iso/*.iso)")
           {
@@ -115,12 +163,44 @@ jobs:
             echo "\`$(sha256sum "result/iso/$ISO" | cut -d' ' -f1)\` - which is the line \`SHA256SUMS\`"
             echo "records, and the digest the provenance below is filed against."
             echo
-            echo "### Verify"
+            # Optional, and the page must not claim the opposite of what it ships: a
+            # hard-coded "signed" section would quietly become a lie the day the key
+            # disappears from the repository.
+            if [ "${SIGNED}" = "true" ]; then
+              echo "### Signed"
+              echo
+              echo "\`SHA256SUMS\` is signed with the project's minisign key:"
+              echo
+              echo '```sh'
+              echo "minisign -V -p easy-nix.pub -m SHA256SUMS"
+              echo '```'
+              echo
+              echo "Compare the key's fingerprint out of band before trusting it: a public key"
+              echo "fetched from the same place as the signature proves nothing by itself."
+            else
+              echo "### Not signed"
+              echo
+              echo "No minisign key is configured yet, so \`SHA256SUMS\` ships unsigned. The build"
+              echo "provenance attestation is the available alternative:"
+              echo
+              echo '```sh'
+              echo "gh attestation verify $ISO --repo $REPO"
+              echo '```'
+            fi
             echo
-            echo '```sh'
-            echo "sha256sum -c SHA256SUMS"
-            echo "gh attestation verify $ISO --repo $REPO"
-            echo '```'
+            echo "### What is in the installed system"
+            echo
+            echo "| asset | what it is |"
+            echo "| --- | --- |"
+            echo "| \`closure-appliance-x86_64-linux.json\` | every store path of the system this image installs, with its NAR hash and size |"
+            echo "| \`closure-sri-appliance-x86_64-linux.tsv\` | the same paths and hashes, in the encoding narinfo files use |"
+            echo
+            echo "The manifest describes the installed system, not this medium: an image's own"
+            echo "closure stops at the ISO file, because the squashfs inside it is compressed and"
+            echo "a reference scan cannot see the store paths within. It is what makes the claim"
+            echo "\"you can check what you downloaded\" true without trusting whoever ran the build:"
+            echo "compare it against your own store, or against cache.nixos.org with a plain GET."
+            echo "The recipe is in the README."
             echo
             echo "### What this release does not do"
             echo
@@ -128,6 +208,8 @@ jobs:
             echo "- no aarch64 ISO; ARM is an SD-card image, see the README"
             echo "- the boot test asserts the image reaches userspace, not that every"
             echo "  application in it launches"
+            echo "- no automated install test: \`easy-nix-install\` has never partitioned a disk"
+            echo "  in CI, see docs/install-test.md"
           } >RELEASE_NOTES.md
           cat RELEASE_NOTES.md
       - uses: actions/attest-build-provenance@v4
@@ -138,7 +220,12 @@ jobs:
           body_path: RELEASE_NOTES.md
           # The parts, never the assembled image: it is over the 2 GiB asset limit, and
           # one oversized glob here is what makes this step fail after a 40-minute build.
+          #
+          # `SHA256SUMS*` rather than naming the signature: it exists only when the signing
+          # key is configured, and a named file that is absent fails the whole step.
           files: |
             release/*.part-*
-            SHA256SUMS
+            SHA256SUMS*
+            result-manifest/closure-*.json
+            result-manifest/closure-sri-*.tsv
           fail_on_unmatched_files: true

@@ -44,6 +44,9 @@ daemon or container runtime anywhere in the image.
    gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
    ```
 
+   `SHA256SUMS.minisig` is present when the release is signed and absent otherwise; the
+   release page says which, and how to check it.
+
 3. Write the assembled image to a USB stick, then boot it. It comes up as a live system,
    so you can check the screen, the keyboard and the wifi before anything is written to a
    disk. It carries the applications, so the install itself does not need the network.
@@ -55,6 +58,55 @@ daemon or container runtime anywhere in the image.
    ```
 
    This erases the target disk. There is no encryption and no dual boot.
+
+## Verifying what you downloaded
+
+`SHA256SUMS` covers every file the release publishes, and it is signed with the minisign
+key committed as [`easy-nix.pub`](easy-nix.pub). The signature is checkable without
+GitHub being reachable or trusted, which is the point of having it:
+
+```sh
+cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
+sha256sum -c SHA256SUMS
+gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
+```
+
+| Asset | What it is |
+|---|---|
+| `easy-nix-<label>.iso.part-*` | the installer, in parts because GitHub refuses a release asset above 2 GiB |
+| `SHA256SUMS` | the hashes of everything below, and of the image |
+| `SHA256SUMS.minisig` | the same file, signed, when the release is signed |
+| `closure-appliance-<system>.json` | every store path of the system an install produces, with its NAR hash and size |
+| `closure-sri-appliance-<system>.tsv` | the same paths and hashes, in the encoding narinfo files use |
+
+The manifest answers a different question from the checksums: not "is this the file that
+was published", but "what is inside the system it installs, and can I check that against
+something I trust?" It describes **the installed system, not the medium**: an image's own
+closure stops at the ISO file, because the squashfs inside it is compressed and a
+reference scan cannot see the store paths within, so a manifest rooted at the image comes
+out with exactly one entry. The medium's own integrity is the checksums and the
+provenance above. The flake sources the installer carries are the one thing neither
+covers, and they are sources, not a system.
+
+For the paths that came from nixpkgs, checking needs neither Nix nor a rebuild - a plain
+GET, and no trust in whoever ran the build:
+
+```sh
+awk '!/^#/ {print $1}' closure-sri-appliance-x86_64-linux.tsv | while read -r p; do
+  h=$(basename "$p")
+  curl -s "https://cache.nixos.org/${h%%-*}.narinfo" | sed -n 's/^NarHash: //p'
+done
+```
+
+Compare each answer with the matching `narHash` in the `.json` beside it. Expect a
+two-part result: the packages that came from nixpkgs confirm, and the locally derived
+paths - the NixOS system itself, generated `/etc` files, systemd units - exist in no
+binary cache, so no tool can confirm them. For those, only rebuilding the image from the
+same revision is authoritative. Run the loop and count, rather than quoting a figure from
+a document: the split differs per flavour and per architecture.
+
+The image also carries a size budget, checked on every push and before every release, so
+it cannot drift silently. See [docs/budget.md](docs/budget.md).
 
 ## Customising it, and why your changes survive
 
@@ -131,7 +183,9 @@ Supported, as a **different product**, and marked experimental:
 - **No Steam.** Steam for Linux is x86-only, so the gaming half does not exist there.
 - No Flathub, on purpose: fewer moving parts on a board nobody will debug.
 - The CI evaluates the ARM configuration but cannot boot-test it; a boot test needs an
-  arm64 runner or software emulation slow enough to time out.
+  arm64 runner or software emulation slow enough to time out. No ARM artifact is
+  published either, for the same reason: a manifest nobody can rebuild would be a claim
+  without a check.
 
 ## What it does not do
 
@@ -150,6 +204,9 @@ Stated here rather than discovered later:
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.
 - The boot test asserts the image reaches userspace; it does not assert that every
   application in it launches.
+- **No automated install test.** `easy-nix-install` has never partitioned a disk in CI,
+  and no installed system has ever been started there. Until that changes,
+  [docs/install-test.md](docs/install-test.md) is the test.
 
 ## Building
 
@@ -158,6 +215,9 @@ nix build .#packages.x86_64-linux.iso       # the installer ISO
 nix build .#packages.x86_64-linux.iso-test  # the light image the boot tests use
 nix build .#packages.x86_64-linux.vm        # boot the system in a VM
 nix build .#packages.aarch64-linux.sd-card  # the SD-card image
+
+nix build .#packages.x86_64-linux.size-budget-installer       # print the measured size
+nix build .#packages.x86_64-linux.closure-manifest-appliance  # what an install produces
 
 nix eval --raw .#evalTargets.<host>          # evaluate one host, the honest way
 just boot-test                               # boot the light image, BIOS + EFI
@@ -195,7 +255,13 @@ modules/
   desktop/                 Wayland session and niri configuration
   apps/                    browsers, office, steam, opencode
   installer/               live medium settings and easy-nix-install
-scripts/nix/qemu-run.sh    the boot harness
+nix/
+  qemu-run.sh              the boot harness
+  closure-manifest.nix     what an image is made of, published with every release
+  size-budget.nix          the measured ceiling that turns drift into a red check
+docs/
+  budget.md                the measured sizes, and why the numbers are what they are
+  install-test.md          installing in a VM by hand, until it can run in CI
 ```
 
 ## Credits
@@ -205,5 +271,9 @@ timers, come from [nixbook](https://github.com/mkellyxp/nixbook) by Mike Kelly (
 easy-nix is a separate project rather than a fork: it targets Wayland and experienced
 users, and it replaces the piece of nixbook's design that makes customisation unsafe -
 an update that resets the configuration checkout to its remote.
+
+The closure manifest, the size budget and the signed checksums follow the conventions of
+[depannix](https://github.com/dbeley/depannix), a sibling project by the same author, so
+that a reader who knows one release page knows the other.
 
 MIT licensed. See `LICENSE`.
