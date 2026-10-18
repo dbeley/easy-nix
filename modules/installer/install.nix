@@ -38,6 +38,11 @@ let
       e2fsprogs
       util-linux
       nixos-install-tools
+      # `nixos-install` is a shell script that shells out to `nix`. Without it here, the
+      # wrapper's PATH has the installer and not the tool the installer calls, and a run
+      # that had already partitioned and mounted the disk dies on "nix: command not found"
+      # two hundred lines in.
+      config.nix.package
       git
       coreutils
       findutils
