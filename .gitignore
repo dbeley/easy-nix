@@ -3,7 +3,9 @@ result-*
 .direnv
 *.iso
 serial.log
+boot-serial*.log
 RELEASE_NOTES.md
 SHA256SUMS
 .eval.log
 .build.log
+.boot.log
