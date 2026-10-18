@@ -71,12 +71,16 @@ jobs:
           # GitHub refuses any release asset of 2 GiB or more, and this image is about
           # 4 GiB because it carries the applications, which is what lets an install work
           # without the network. Parts of 1900 MiB stay under the limit whatever the image
-          # grows to. The assembled image is kept, because the attestation below covers it
-          # rather than the parts.
-          cd result/iso
-          ISO=$(ls easy-nix-*.iso)
-          split -b 1900M --numeric-suffixes=1 --suffix-length=2 "$ISO" "$ISO.part-"
-          ls -lh
+          # grows to, and the release notes say how to put them back together.
+          #
+          # The parts go into the workspace, not beside the image: `result/iso` is a
+          # read-only Nix store path, so writing there fails with "Permission denied"
+          # after the build has already run. The assembled image stays where it is,
+          # because the provenance below is filed against that file, not against the parts.
+          ISO=$(basename "$(ls result/iso/*.iso)")
+          mkdir -p release
+          split -b 1900M --numeric-suffixes=1 --suffix-length=2 "result/iso/$ISO" "release/$ISO.part-"
+          ls -lh release
       - name: Write the release notes
         env:
           TAG: ${{ github.ref_name }}
@@ -103,7 +107,7 @@ jobs:
             echo
             echo "| part | size | sha256 |"
             echo "| --- | --- | --- |"
-            for f in result/iso/*.part-*; do
+            for f in release/*.part-*; do
               printf '| %s | %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -d' ' -f1)"
             done
             echo
@@ -135,6 +139,6 @@ jobs:
           # The parts, never the assembled image: it is over the 2 GiB asset limit, and
           # one oversized glob here is what makes this step fail after a 40-minute build.
           files: |
-            result/iso/*.part-*
+            release/*.part-*
             SHA256SUMS
           fail_on_unmatched_files: true
