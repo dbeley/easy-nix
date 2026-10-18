@@ -16,6 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
+      - name: Free disk space
+        run: |
+          # See ci.yml: the default runner image does not leave room for a desktop
+          # closure, its squashfs and the ISO that ships both.
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          sudo docker image prune -af || true
+          df -h /
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

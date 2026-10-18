@@ -61,10 +61,27 @@ jobs:
           nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
 
   iso:
+    # Not on pull requests: a full ISO build is the most expensive thing here, and it
+    # is the artifact of a merge to main or of a tag, not of an open proposal.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
+      - name: Free disk space
+        run: |
+          # A NixOS desktop closure (two browsers, LibreOffice, Steam), its squashfs and
+          # the resulting ISO do not fit in the ~14 GB the default image leaves free:
+          # the build otherwise dies with "No space left on device" several minutes in.
+          # None of the paths below is used by this build.
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          sudo docker image prune -af || true
+          df -h /
       - name: Build the installer ISO
         run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
       - name: Size and checksum
