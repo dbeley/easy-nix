@@ -60,25 +60,28 @@ jobs:
           # ./result that no longer holds the ISO.
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
-      - name: Size budget and closure manifests
+      - name: Size budget and closure manifest
         run: |
           # The budget fails the release if the image drifted past its measured ceiling
-          # (docs/budget.md); the manifests are what the release page publishes instead
-          # of a promise. Both keep ./result pointing at the ISO: the budget through
-          # --no-link, the manifests through out-links that .gitignore already covers.
+          # (docs/budget.md). The manifest is what the release page publishes instead of a
+          # promise, and it describes the system an install produces - not the medium:
+          # rooted at the image it would come out with a single entry, the ISO file,
+          # because a compressed squashfs hides the store paths inside it from a
+          # reference scan.
+          #
+          # Both keep ./result pointing at the ISO: the budget through --no-link, the
+          # manifest through an out-link that .gitignore already covers.
           nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
-          nix build -L --out-link result-manifest .#packages.x86_64-linux.closure-manifest-installer
-          nix build -L --out-link result-manifest-appliance .#packages.x86_64-linux.closure-manifest-appliance
+          nix build -L --out-link result-manifest .#packages.x86_64-linux.closure-manifest-appliance
       - name: Checksums
         run: |
           # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
           # user downloaded into, where `result/iso/...` does not exist.
           #
-          # The manifests are covered too: this file is the one document that lists
+          # The manifest is covered too: this file is the one document that lists
           # everything the release publishes, and it is the one that is signed.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
           (cd result-manifest && sha256sum closure-*.json closure-sri-*.tsv) >> SHA256SUMS
-          (cd result-manifest-appliance && sha256sum closure-*.json closure-sri-*.tsv) >> SHA256SUMS
           cat SHA256SUMS
       - name: Sign the checksums
         env:
@@ -162,18 +165,20 @@ jobs:
             echo "gh attestation verify $ISO --repo $REPO"
             echo '```'
             echo
-            echo "### What is in the image"
+            echo "### What is in the installed system"
             echo
             echo "| asset | what it is |"
             echo "| --- | --- |"
-            echo "| \`closure-installer-x86_64-linux.json\` | every store path in the medium, with its NAR hash and size |"
-            echo "| \`closure-sri-installer-x86_64-linux.tsv\` | the same paths and hashes, in the encoding narinfo files use |"
-            echo "| \`closure-appliance-x86_64-linux.json\` | every store path of the system an install produces |"
+            echo "| \`closure-appliance-x86_64-linux.json\` | every store path of the system this image installs, with its NAR hash and size |"
+            echo "| \`closure-sri-appliance-x86_64-linux.tsv\` | the same paths and hashes, in the encoding narinfo files use |"
             echo "| \`SHA256SUMS\` and \`SHA256SUMS.minisig\` | the hashes of all of the above, signed |"
             echo
-            echo "The manifests are what makes \"you can check what you downloaded\" true without"
-            echo "trusting whoever ran the build: compare them against your own store, or"
-            echo "against cache.nixos.org with a plain GET. The recipe is in the README."
+            echo "The manifest describes the installed system, not this medium: an image's own"
+            echo "closure stops at the ISO file, because the squashfs inside it is compressed and"
+            echo "a reference scan cannot see the store paths within. It is what makes the claim"
+            echo "\"you can check what you downloaded\" true without trusting whoever ran the build:"
+            echo "compare it against your own store, or against cache.nixos.org with a plain GET."
+            echo "The recipe is in the README."
             echo
             echo "### What this release does not do"
             echo
@@ -199,6 +204,4 @@ jobs:
             SHA256SUMS.minisig
             result-manifest/closure-*.json
             result-manifest/closure-sri-*.tsv
-            result-manifest-appliance/closure-*.json
-            result-manifest-appliance/closure-sri-*.tsv
           fail_on_unmatched_files: true

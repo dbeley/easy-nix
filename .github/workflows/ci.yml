@@ -47,13 +47,12 @@ jobs:
         run: nix eval --raw .#evalTargets.${{ matrix.host }}
       - name: Evaluate the release artifacts
         run: |
-          # The closure manifests are part of every release page. Evaluating them for
-          # both architectures is the only ARM coverage they can have here: nothing
-          # builds an aarch64 system in CI, so a manifest for it is published only
-          # when someone builds one on real ARM hardware.
-          nix eval --raw .#packages.x86_64-linux.closure-manifest-installer.drvPath
+          # The size budgets and the closure manifest are part of every release page, so
+          # an evaluation error in one of them is a broken release forty minutes into a
+          # build. Evaluating them costs seconds.
+          nix eval --raw .#packages.x86_64-linux.size-budget-installer.drvPath
+          nix eval --raw .#packages.x86_64-linux.size-budget-test.drvPath
           nix eval --raw .#packages.x86_64-linux.closure-manifest-appliance.drvPath
-          nix eval --raw .#packages.aarch64-linux.closure-manifest-appliance.drvPath
 
   boot-test:
     runs-on: ubuntu-latest
@@ -132,7 +131,7 @@ jobs:
           # artifact upload below reads result/iso/*.iso. Without it the job goes green
           # while uploading a 231-byte archive with no image in it.
           nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
-          nix build --no-link -L .#packages.x86_64-linux.closure-manifest-installer
+          nix build --no-link -L .#packages.x86_64-linux.closure-manifest-appliance
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

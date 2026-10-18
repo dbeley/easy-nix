@@ -75,18 +75,23 @@ gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
 |---|---|
 | `easy-nix-<label>.iso.part-*` | the installer, in parts because GitHub refuses a release asset above 2 GiB |
 | `SHA256SUMS` and `SHA256SUMS.minisig` | the hashes of everything below, and the signature over them |
-| `closure-installer-<system>.json` | every store path in the medium, with its NAR hash and size |
-| `closure-sri-installer-<system>.tsv` | the same paths and hashes, in the encoding narinfo files use |
-| `closure-appliance-<system>.json` | every store path of the system an install produces |
-| `closure-sri-appliance-<system>.tsv` | the same, for the installed system |
+| `closure-appliance-<system>.json` | every store path of the system an install produces, with its NAR hash and size |
+| `closure-sri-appliance-<system>.tsv` | the same paths and hashes, in the encoding narinfo files use |
 
-The manifests answer a different question from the checksums: not "is this the file that
-was published", but "what is inside it, and can I check that against something I trust?"
-For the paths that came from nixpkgs, that needs neither Nix nor a rebuild - a plain GET,
-and no trust in whoever ran the build:
+The manifest answers a different question from the checksums: not "is this the file that
+was published", but "what is inside the system it installs, and can I check that against
+something I trust?" It describes **the installed system, not the medium**: an image's own
+closure stops at the ISO file, because the squashfs inside it is compressed and a
+reference scan cannot see the store paths within, so a manifest rooted at the image comes
+out with exactly one entry. The medium's own integrity is the checksums and the
+provenance above. The flake sources the installer carries are the one thing neither
+covers, and they are sources, not a system.
+
+For the paths that came from nixpkgs, checking needs neither Nix nor a rebuild - a plain
+GET, and no trust in whoever ran the build:
 
 ```sh
-awk '!/^#/ {print $1}' closure-sri-installer-x86_64-linux.tsv | while read -r p; do
+awk '!/^#/ {print $1}' closure-sri-appliance-x86_64-linux.tsv | while read -r p; do
   h=$(basename "$p")
   curl -s "https://cache.nixos.org/${h%%-*}.narinfo" | sed -n 's/^NarHash: //p'
 done
@@ -210,8 +215,8 @@ nix build .#packages.x86_64-linux.iso-test  # the light image the boot tests use
 nix build .#packages.x86_64-linux.vm        # boot the system in a VM
 nix build .#packages.aarch64-linux.sd-card  # the SD-card image
 
-nix build .#packages.x86_64-linux.size-budget-installer      # print the measured size
-nix build .#packages.x86_64-linux.closure-manifest-installer # what the medium contains
+nix build .#packages.x86_64-linux.size-budget-installer       # print the measured size
+nix build .#packages.x86_64-linux.closure-manifest-appliance  # what an install produces
 
 nix eval --raw .#evalTargets.<host>          # evaluate one host, the honest way
 just boot-test                               # boot the light image, BIOS + EFI

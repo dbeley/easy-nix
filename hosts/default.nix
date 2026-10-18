@@ -97,13 +97,11 @@ let
       iso-test = nixosConfigurations.easy-nix-live-test.config.system.build.images.iso;
       vm = nixosConfigurations.easy-nix.config.system.build.vm;
 
-      # What the release page publishes: the closure of the medium people download,
-      # and of the system an install produces.
-      # Rooted at the image rather than at the system: a live host's toplevel cannot be
-      # evaluated, and the manifest is meant to describe the medium someone downloads.
-      closure-manifest-installer =
-        mkClosureManifest "x86_64-linux" "installer"
-          nixosConfigurations.easy-nix-live.config.system.build.images.iso;
+      # The closure of the system an install produces. This is the claim the release page
+      # can actually support, and it is deliberately NOT rooted at the medium: an image's
+      # own closure stops at the ISO file, because the squashfs inside is compressed and
+      # reference scanning cannot see the store paths within it. Measured, not guessed -
+      # the first CI run that built this reported `paths: 1`, the ISO and nothing else.
       closure-manifest-appliance =
         mkClosureManifest "x86_64-linux" "appliance"
           nixosConfigurations.easy-nix.config.system.build.toplevel;
@@ -122,16 +120,6 @@ let
     };
     aarch64-linux = {
       sd-card = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;
-
-      # Buildable on an ARM machine, and deliberately absent from the release: this
-      # flake is only *evaluated* for aarch64 in CI, so no ARM artifact is published,
-      # and a manifest nobody can rebuild would be a claim without a check.
-      #
-      # Rooted at the SD-card image, for the reason given above: the ARM host is an
-      # image-only host too, so its toplevel does not evaluate.
-      closure-manifest-appliance =
-        mkClosureManifest "aarch64-linux" "appliance"
-          nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;
     };
   };
 in

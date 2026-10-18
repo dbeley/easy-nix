@@ -1,6 +1,6 @@
 # Composition manifest.
 #
-# Publishes the exhaustive list of store paths an image is made of, with their hash.
+# Publishes the exhaustive list of store paths a *system* is made of, with their hash.
 # This is the piece that makes the claim "you can check what you downloaded"
 # verifiable: anyone can compare this manifest against their own store, or against
 # cache.nixos.org, without trusting whoever ran the build.
@@ -15,10 +15,9 @@
 # a reader who knows one release page knows the other.
 #
 # Every file name carries the flavour and the system, e.g.
-# `closure-installer-x86_64-linux.json`. The appliance, the live medium and the ARM
-# image are different closures, and identical names meant the manifests silently
-# overwrote each other: the published one described an unstated flavour and did not
-# necessarily match the image next to it.
+# `closure-appliance-x86_64-linux.json`. Two systems are different closures, and
+# identical names meant the manifests silently overwrote each other: the published one
+# described an unstated flavour and did not necessarily match the image next to it.
 {
   pkgs,
   toplevel,
@@ -108,12 +107,16 @@ pkgs.runCommand "easy-nix-closure-manifest-${flavour}"
   {
     # Required for `$NIX_ATTRS_JSON_FILE` to exist.
     __structuredAttrs = true;
-    # `toplevel` is whatever this manifest describes: a system
-    # (`config.system.build.toplevel`) or, for a live host, the image itself
-    # (`config.system.build.images.iso`). A live host has no evaluable toplevel - its
-    # filesystem layout comes from the image module, so evaluating one fails an
-    # assertion about a missing root filesystem - and the manifest is meant to describe
-    # the medium someone downloads anyway.
+    # `toplevel` must be a system: pass `config.system.build.toplevel`. Do not pass an
+    # image, whatever the name of this file suggests. An image's closure stops at the
+    # image file itself - the squashfs inside is compressed, so reference scanning cannot
+    # see the store paths within it, and the manifest comes out as a single entry.
+    # Measured, not guessed: the first CI run to build this reported `paths: 1`.
+    #
+    # A live medium is therefore not describable this way at all: its toplevel does not
+    # evaluate (its filesystem layout comes from the image module, so Nix reports a
+    # missing root filesystem). The manifest published with a release describes the system
+    # an install produces, and the release page says so.
     exportReferencesGraph.easyNix = [ toplevel ];
     nativeBuildInputs = [
       pkgs.jq
