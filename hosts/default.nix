@@ -39,6 +39,27 @@ let
       modules = [ ../modules/base.nix ] ++ modules;
     };
 
+  # The two instruments the sibling project depannix also ships, so that the two
+  # release pages describe their artifacts the same way:
+  #
+  #   - a closure manifest, listing every store path an image is made of, with its hash
+  #     in both encodings, so a reader can check what they downloaded against their own
+  #     store or against cache.nixos.org, without trusting whoever ran the build;
+  #   - a size budget, which turns "the image grew" into a red check on the commit that
+  #     caused it, instead of a surprise at the last step of a release job.
+  #
+  # Both are per flavour and per system, because the appliance, the live medium and the
+  # ARM image share almost nothing.
+  pkgsFor = system: inputs.nixpkgs.legacyPackages.${system};
+
+  mkClosureManifest =
+    system: flavour: toplevel:
+    (pkgsFor system).callPackage ../nix/closure-manifest.nix { inherit toplevel flavour; };
+
+  mkSizeBudget =
+    system: flavour: image: budgetMiB:
+    (pkgsFor system).callPackage ../nix/size-budget.nix { inherit image flavour budgetMiB; };
+
   nixosConfigurations = {
     # The appliance as installed on a disk.
     easy-nix = mkHost {
@@ -75,9 +96,42 @@ let
       iso = nixosConfigurations.easy-nix-live.config.system.build.images.iso;
       iso-test = nixosConfigurations.easy-nix-live-test.config.system.build.images.iso;
       vm = nixosConfigurations.easy-nix.config.system.build.vm;
+
+      # What the release page publishes: the closure of the medium people download,
+      # and of the system an install produces.
+      # Rooted at the image rather than at the system: a live host's toplevel cannot be
+      # evaluated, and the manifest is meant to describe the medium someone downloads.
+      closure-manifest-installer =
+        mkClosureManifest "x86_64-linux" "installer"
+          nixosConfigurations.easy-nix-live.config.system.build.images.iso;
+      closure-manifest-appliance =
+        mkClosureManifest "x86_64-linux" "appliance"
+          nixosConfigurations.easy-nix.config.system.build.toplevel;
+
+      # Measured ceilings, in MiB, with the reason for each number in docs/budget.md.
+      # The installer one matters most: GitHub refuses a release asset above 2 GiB and
+      # this image is twice that, which is why it ships in parts.
+      size-budget-installer =
+        mkSizeBudget "x86_64-linux" "installer"
+          nixosConfigurations.easy-nix-live.config.system.build.images.iso
+          4100;
+      size-budget-test =
+        mkSizeBudget "x86_64-linux" "test"
+          nixosConfigurations.easy-nix-live-test.config.system.build.images.iso
+          2048;
     };
     aarch64-linux = {
       sd-card = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;
+
+      # Buildable on an ARM machine, and deliberately absent from the release: this
+      # flake is only *evaluated* for aarch64 in CI, so no ARM artifact is published,
+      # and a manifest nobody can rebuild would be a claim without a check.
+      #
+      # Rooted at the SD-card image, for the reason given above: the ARM host is an
+      # image-only host too, so its toplevel does not evaluate.
+      closure-manifest-appliance =
+        mkClosureManifest "aarch64-linux" "appliance"
+          nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;
     };
   };
 in

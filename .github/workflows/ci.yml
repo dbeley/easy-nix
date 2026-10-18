@@ -45,6 +45,15 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Evaluate ${{ matrix.host }}
         run: nix eval --raw .#evalTargets.${{ matrix.host }}
+      - name: Evaluate the release artifacts
+        run: |
+          # The closure manifests are part of every release page. Evaluating them for
+          # both architectures is the only ARM coverage they can have here: nothing
+          # builds an aarch64 system in CI, so a manifest for it is published only
+          # when someone builds one on real ARM hardware.
+          nix eval --raw .#packages.x86_64-linux.closure-manifest-installer.drvPath
+          nix eval --raw .#packages.x86_64-linux.closure-manifest-appliance.drvPath
+          nix eval --raw .#packages.aarch64-linux.closure-manifest-appliance.drvPath
 
   boot-test:
     runs-on: ubuntu-latest
@@ -114,6 +123,16 @@ jobs:
           # user downloaded into, where `result/iso/...` does not exist.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
           cat SHA256SUMS
+      - name: Size budget and closure manifest
+        run: |
+          # Nearly free here: the image and the closure are already built, so these only
+          # add their own derivations.
+          #
+          # --no-link, and it is not cosmetic: either build repoints ./result, and the
+          # artifact upload below reads result/iso/*.iso. Without it the job goes green
+          # while uploading a 231-byte archive with no image in it.
+          nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
+          nix build --no-link -L .#packages.x86_64-linux.closure-manifest-installer
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
