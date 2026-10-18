@@ -2,8 +2,7 @@
 
 An image that grows without anyone noticing is an image whose documentation quietly
 stops being true. This project therefore measures its images and keeps a ceiling per
-flavour, checked by `nix build .#packages.x86_64-linux.size-budget-<flavour>` - the
-same instrument the sibling project depannix uses, with its own numbers.
+flavour, checked by `nix build .#packages.x86_64-linux.size-budget-<flavour>`.
 
 Every figure below is a **measurement of a real artifact**, not a sum of package sizes.
 A package list is a ranking; it is not a budget.

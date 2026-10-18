@@ -79,29 +79,35 @@ jobs:
           # user downloaded into, where `result/iso/...` does not exist.
           #
           # The manifest is covered too: this file is the one document that lists
-          # everything the release publishes, and it is the one that is signed.
+          # everything the release publishes, and it is the one that gets signed.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
           (cd result-manifest && sha256sum closure-*.json closure-sri-*.tsv) >> SHA256SUMS
           cat SHA256SUMS
-      - name: Sign the checksums
+      - name: Detect the signing key
+        id: sig
         env:
-          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          # The same convention as the sibling project depannix: minisign signs
-          # SHA256SUMS, and the public key is committed as easy-nix.pub, so the signature
-          # is checkable without GitHub being reachable or trusted.
-          #
-          # minisign reads its password neither from the environment nor from stdin, so
-          # the secret must be an UNENCRYPTED key (`minisign -G -W`). A missing secret is
-          # a hard failure rather than a release published unsigned: the README tells
-          # readers to check the signature, and shipping without one would make the
-          # documentation a lie.
-          if [ -z "$MINISIGN_KEY" ]; then
-            echo "::error::the MINISIGN_KEY secret is not set on this repository." >&2
-            echo "Add the unencrypted minisign key (the one depannix signs with) as a" >&2
-            echo "repository secret named MINISIGN_KEY, then re-tag." >&2
-            exit 1
+          # Signing is optional, and its absence is announced rather than fatal: a release
+          # whose artifacts are built, boot-tested and attested should not be thrown away
+          # because a key is missing. The notes below say which of the two happened, so the
+          # page never claims a signature the download does not carry.
+          if [ -n "$MINISIGN_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::MINISIGN_SECRET_KEY is absent - the release will not be signed"
           fi
+      - name: Sign the checksums
+        if: steps.sig.outputs.enabled == 'true'
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          # minisign reads its password neither from the environment nor from stdin: it
+          # asks the terminal, which CI does not have. The key in the secret must therefore
+          # be UNENCRYPTED (`minisign -G -W`), the only non-interactive mode upstream
+          # supports. The public key is committed as easy-nix.pub, so a signature is
+          # checkable without GitHub being reachable or trusted.
           mkdir -p ~/.minisign
           printf '%s\n' "$MINISIGN_KEY" > ~/.minisign/easy-nix.key
           nix run nixpkgs#minisign -- -S -s ~/.minisign/easy-nix.key -m SHA256SUMS
@@ -126,6 +132,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SIGNED: ${{ steps.sig.outputs.enabled }}
         run: |
           ISO=$(basename "$(ls result/iso/*.iso)")
           {
@@ -138,7 +145,6 @@ jobs:
             echo '```sh'
             echo "cat ${ISO}.part-* > $ISO"
             echo "sha256sum -c SHA256SUMS"
-            echo "minisign -V -p easy-nix.pub -m SHA256SUMS"
             echo '```'
             echo
             echo "Then write **$ISO** to a USB stick and boot it. It comes up as a live"
@@ -157,13 +163,30 @@ jobs:
             echo "\`$(sha256sum "result/iso/$ISO" | cut -d' ' -f1)\` - which is the line \`SHA256SUMS\`"
             echo "records, and the digest the provenance below is filed against."
             echo
-            echo "### Verify"
-            echo
-            echo '```sh'
-            echo "sha256sum -c SHA256SUMS"
-            echo "minisign -V -p easy-nix.pub -m SHA256SUMS"
-            echo "gh attestation verify $ISO --repo $REPO"
-            echo '```'
+            # Optional, and the page must not claim the opposite of what it ships: a
+            # hard-coded "signed" section would quietly become a lie the day the key
+            # disappears from the repository.
+            if [ "${SIGNED}" = "true" ]; then
+              echo "### Signed"
+              echo
+              echo "\`SHA256SUMS\` is signed with the project's minisign key:"
+              echo
+              echo '```sh'
+              echo "minisign -V -p easy-nix.pub -m SHA256SUMS"
+              echo '```'
+              echo
+              echo "Compare the key's fingerprint out of band before trusting it: a public key"
+              echo "fetched from the same place as the signature proves nothing by itself."
+            else
+              echo "### Not signed"
+              echo
+              echo "No minisign key is configured yet, so \`SHA256SUMS\` ships unsigned. The build"
+              echo "provenance attestation is the available alternative:"
+              echo
+              echo '```sh'
+              echo "gh attestation verify $ISO --repo $REPO"
+              echo '```'
+            fi
             echo
             echo "### What is in the installed system"
             echo
@@ -171,7 +194,6 @@ jobs:
             echo "| --- | --- |"
             echo "| \`closure-appliance-x86_64-linux.json\` | every store path of the system this image installs, with its NAR hash and size |"
             echo "| \`closure-sri-appliance-x86_64-linux.tsv\` | the same paths and hashes, in the encoding narinfo files use |"
-            echo "| \`SHA256SUMS\` and \`SHA256SUMS.minisig\` | the hashes of all of the above, signed |"
             echo
             echo "The manifest describes the installed system, not this medium: an image's own"
             echo "closure stops at the ISO file, because the squashfs inside it is compressed and"
@@ -198,10 +220,12 @@ jobs:
           body_path: RELEASE_NOTES.md
           # The parts, never the assembled image: it is over the 2 GiB asset limit, and
           # one oversized glob here is what makes this step fail after a 40-minute build.
+          #
+          # `SHA256SUMS*` rather than naming the signature: it exists only when the signing
+          # key is configured, and a named file that is absent fails the whole step.
           files: |
             release/*.part-*
-            SHA256SUMS
-            SHA256SUMS.minisig
+            SHA256SUMS*
             result-manifest/closure-*.json
             result-manifest/closure-sri-*.tsv
           fail_on_unmatched_files: true

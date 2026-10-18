@@ -41,9 +41,11 @@ daemon or container runtime anywhere in the image.
    ```sh
    cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
    sha256sum -c SHA256SUMS
-   minisign -V -p easy-nix.pub -m SHA256SUMS
    gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
    ```
+
+   `SHA256SUMS.minisig` is present when the release is signed and absent otherwise; the
+   release page says which, and how to check it.
 
 3. Write the assembled image to a USB stick, then boot it. It comes up as a live system,
    so you can check the screen, the keyboard and the wifi before anything is written to a
@@ -60,21 +62,20 @@ daemon or container runtime anywhere in the image.
 ## Verifying what you downloaded
 
 `SHA256SUMS` covers every file the release publishes, and it is signed with the minisign
-key committed as [`easy-nix.pub`](easy-nix.pub) - the same key, and the same convention,
-as the sibling project [depannix](https://github.com/dbeley/depannix). The signature is
-checkable without GitHub being reachable or trusted, which is the point of having it:
+key committed as [`easy-nix.pub`](easy-nix.pub). The signature is checkable without
+GitHub being reachable or trusted, which is the point of having it:
 
 ```sh
 cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
 sha256sum -c SHA256SUMS
-minisign -V -p easy-nix.pub -m SHA256SUMS
 gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
 ```
 
 | Asset | What it is |
 |---|---|
 | `easy-nix-<label>.iso.part-*` | the installer, in parts because GitHub refuses a release asset above 2 GiB |
-| `SHA256SUMS` and `SHA256SUMS.minisig` | the hashes of everything below, and the signature over them |
+| `SHA256SUMS` | the hashes of everything below, and of the image |
+| `SHA256SUMS.minisig` | the same file, signed, when the release is signed |
 | `closure-appliance-<system>.json` | every store path of the system an install produces, with its NAR hash and size |
 | `closure-sri-appliance-<system>.tsv` | the same paths and hashes, in the encoding narinfo files use |
 
@@ -272,7 +273,7 @@ users, and it replaces the piece of nixbook's design that makes customisation un
 an update that resets the configuration checkout to its remote.
 
 The closure manifest, the size budget and the signed checksums follow the conventions of
-[depannix](https://github.com/dbeley/depannix), the sibling project, so that a reader who
-knows one release page knows the other.
+[depannix](https://github.com/dbeley/depannix), a sibling project by the same author, so
+that a reader who knows one release page knows the other.
 
 MIT licensed. See `LICENSE`.

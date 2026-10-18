@@ -1,8 +1,7 @@
 # Guard rail: an image must not drift in size without anyone noticing.
 #
-# Same instrument as the sibling project depannix (nix/closure-manifest.nix and
-# docs/budget.md there, nix/size-budget.nix here): a measured ceiling per flavour,
-# with the reason for the number written down. The figures are in docs/budget.md,
+# A measured ceiling per flavour, with the reason for every number written down in
+# docs/budget.md. The figures are in docs/budget.md,
 # and each one is a measurement, never an estimate.
 #
 # This exists because the release pipeline has a hard external ceiling - GitHub

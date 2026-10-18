@@ -11,8 +11,6 @@
 # ("Permission denied" on /nix/var/nix/profiles). This is the method `closureInfo`
 # uses in nixpkgs, and the only one that works in CI.
 #
-# The same shape ships in the sibling project depannix (nix/closure-manifest.nix), so
-# a reader who knows one release page knows the other.
 #
 # Every file name carries the flavour and the system, e.g.
 # `closure-appliance-x86_64-linux.json`. Two systems are different closures, and
@@ -166,8 +164,7 @@ pkgs.runCommand "easy-nix-closure-manifest-${flavour}"
     # Bare file names, computed from inside the directory. A reader runs
     # `sha256sum -c MANIFEST-....sha256` in their download directory, where `$out/...`
     # does not exist, so recording the store paths here would make the command in
-    # README-<suffix>.txt fail for everyone. depannix records the paths; that is a
-    # divergence worth fixing there rather than copying here.
+    # README-<suffix>.txt fail for everyone.
     (cd $out && sha256sum closure-${suffix}.json store-paths-${suffix}.txt \
       closure-sri-${suffix}.tsv) > $out/MANIFEST-${suffix}.sha256
 

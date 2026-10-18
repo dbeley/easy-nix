@@ -39,8 +39,7 @@ let
       modules = [ ../modules/base.nix ] ++ modules;
     };
 
-  # The two instruments the sibling project depannix also ships, so that the two
-  # release pages describe their artifacts the same way:
+  # Two instruments the release page publishes instead of a promise:
   #
   #   - a closure manifest, listing every store path an image is made of, with its hash
   #     in both encodings, so a reader can check what they downloaded against their own
