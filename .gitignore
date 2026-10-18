@@ -9,3 +9,4 @@ SHA256SUMS
 .eval.log
 .build.log
 .boot.log
+.ci-watch.log
