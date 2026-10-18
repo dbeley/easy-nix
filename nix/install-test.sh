@@ -44,6 +44,13 @@ args=(
   # `pkgs.OVMF.firmware` is the code file itself, not a directory holding one.
   -drive "if=pflash,format=raw,readonly=on,file=$OVMF_FIRMWARE"
   -drive "file=$disk,if=virtio,format=raw"
+  # The network, because this medium is the light one: it carries the flake and its inputs
+  # but not the system it installs, so `nixos-install` has to fetch or build that. With no
+  # network device the guest resolves no names at all and the install dies on "Could not
+  # resolve host: github.com", with the disk already partitioned, formatted and mounted -
+  # which reads like a flake problem and is a missing network card. The value is quoted
+  # because of its comma: unquoted, shellcheck reads it as an array element separator.
+  -nic "user,model=virtio-net-pci"
 )
 
 # KVM is the difference between minutes and hours. Without it this test does not fail,
