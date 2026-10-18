@@ -58,7 +58,7 @@ let
         # directory is read-only; copying it into $out is what makes a failed boot
         # debuggable after the fact.
         cd "$TMPDIR"
-        ${pkgs.bash}/bin/bash ${../scripts/nix/qemu-run.sh}
+        ${pkgs.bash}/bin/bash ${../nix/qemu-run.sh}
         cp serial.log $out/serial.log
         echo "mode=${mode}" > $out/result
       '';
