@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
-      - name: Formatting and static checks
+      - name: Formatting
+        run: nix build .#checks.x86_64-linux.formatting -L
+      - name: Static checks
         run: nix build .#checks.x86_64-linux.pre-commit-check -L
 
   eval:

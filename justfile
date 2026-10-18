@@ -8,8 +8,10 @@ host := "easy-nix"
 fmt:
     nix fmt
 
-# The formatting/linting checks only: cheap, no host evaluation
+# The formatting gate (the same wrapper `nix fmt` uses) plus the static checks: cheap,
+# and no host evaluation
 check:
+    nix build .#checks.x86_64-linux.formatting -L
     nix build .#checks.x86_64-linux.pre-commit-check -L
 
 # Evaluate every host, one at a time, to stay within a small machine's memory.

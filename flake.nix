@@ -56,7 +56,11 @@
       flake.evalTargets = hosts.evalTargets;
 
       perSystem =
-        { system, ... }:
+        {
+          config,
+          system,
+          ...
+        }:
         let
           pkgs = inputs.nixpkgs.legacyPackages.${system};
           bootTests = hosts.bootTests.${system} or { };
@@ -74,15 +78,33 @@
           };
 
           checks = {
+            # The formatting gate runs the very wrapper `nix fmt` runs, so the two can
+            # never disagree about how a file should look.
+            #
+            # Listing shfmt here as a separate hook does not work: the git-hooks shfmt
+            # and treefmt's shfmt use different defaults (tabs versus two spaces), so
+            # they fight over the same file and CI goes red while `nix fmt` reports the
+            # tree as clean. One formatter, one gate.
+            formatting =
+              pkgs.runCommand "treefmt-check"
+                {
+                  nativeBuildInputs = [ config.treefmt.build.wrapper ];
+                }
+                ''
+                  cp -r ${./.} src
+                  chmod -R u+w src
+                  rm -rf src/.git
+                  cd src
+                  treefmt --fail-on-change
+                  touch $out
+                '';
+
+            # Checks with no formatter equivalent.
             pre-commit-check = inputs.git-hooks.lib.${system}.run {
               src = ./.;
               hooks = {
-                nixfmt.enable = true;
-                statix.enable = true;
-                deadnix.enable = true;
-                end-of-file-fixer.enable = true;
                 shellcheck.enable = true;
-                shfmt.enable = true;
+                end-of-file-fixer.enable = true;
                 trim-trailing-whitespace.enable = true;
               };
             };
