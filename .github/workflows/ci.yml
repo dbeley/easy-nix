@@ -110,7 +110,10 @@ jobs:
       - name: Size and checksum
         run: |
           ls -lh result/iso/*.iso
-          sha256sum result/iso/*.iso | tee SHA256SUMS
+          # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
+          # user downloaded into, where `result/iso/...` does not exist.
+          (cd result/iso && sha256sum *.iso) > SHA256SUMS
+          cat SHA256SUMS
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -123,8 +126,11 @@ jobs:
           # The light image is boot-tested in its own job; this is the same assertion
           # against the image that actually ships, so a release step is never the first
           # time it runs. Same runner as the build, so nothing is rebuilt.
-          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
-          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+          # --no-link: without it, `nix build` repoints ./result at the check's own output,
+          # and the steps that follow (checksums, notes, artifact upload) then read a
+          # ./result that no longer holds the ISO.
+          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
+          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
       - uses: actions/upload-artifact@v7
         with:
           name: easy-nix-iso

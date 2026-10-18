@@ -55,10 +55,17 @@ jobs:
           # The light image is boot-tested on every push; this is the same assertion
           # against the artifact that ships, applications and all. A step that has only
           # ever run on a tag is untested code.
-          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
-          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+          # --no-link: without it, `nix build` repoints ./result at the check's own output,
+          # and the steps that follow (checksums, notes, release assets) then read a
+          # ./result that no longer holds the ISO.
+          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
+          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
       - name: Checksums
-        run: sha256sum result/iso/*.iso > SHA256SUMS
+        run: |
+          # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
+          # user downloaded into, where `result/iso/...` does not exist.
+          (cd result/iso && sha256sum *.iso) > SHA256SUMS
+          cat SHA256SUMS
       - name: Write the release notes
         env:
           TAG: ${{ github.ref_name }}
