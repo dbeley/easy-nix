@@ -74,6 +74,12 @@ jobs:
           # enough, because the build runs in a sandbox that does not expose it.
           nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
           nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
+      - name: Size budget of the light image
+        run: |
+          # This job already builds that image, so the budget is nearly free here - and
+          # it has to run somewhere: a ceiling nothing ever measures against is not a
+          # ceiling. The installer's own budget runs in the iso job, which builds the ISO.
+          nix build --no-link -L .#packages.x86_64-linux.size-budget-test
 
   iso:
     # Not on pull requests: a full ISO build is the most expensive thing here, and it
