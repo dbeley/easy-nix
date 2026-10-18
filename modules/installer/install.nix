@@ -191,6 +191,12 @@ in
       RemainAfterExit = true;
       # An install takes as long as it takes; the caller has its own deadline.
       TimeoutStartSec = "infinity";
+      # What the installer says goes to the console as well as to the journal. The
+      # journal of a machine that has been powered off, and whose disk is a temporary
+      # image, cannot be read afterwards - the serial console is the only channel the
+      # test can read, and without this an early refusal is invisible.
+      StandardOutput = "journal+console";
+      StandardError = "journal+console";
     };
     script = ''
       set -x

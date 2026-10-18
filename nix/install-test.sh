@@ -76,8 +76,14 @@ run_qemu() { # run_qemu <log> [extra args...]
 
 fail() { # fail <log> <message>
   echo "[install-test] FAIL: $2" >&2
-  echo "--- last lines of $1 ---" >&2
-  tail -40 "$1" >&2 || true
+  # What the guest said about the installer comes first, because the interesting
+  # failure is usually an early refusal and not the last thing the kernel printed.
+  # Printing it here is the only way it reaches the CI log: a build that fails has its
+  # output directory discarded, so copying the log into $out would be lost.
+  echo "--- what the guest said about the installer ---" >&2
+  grep -aE "easy-nix-autoinstall|easy-nix-install|EASY_NIX_INSTALLED|EASY_NIX_INSTALL_FAILED|not a block device|About to ERASE|partitioning|nixos-install|Error|error:" "$1" | tail -40 >&2 || true
+  echo "--- last 60 lines of $1 ---" >&2
+  tail -60 "$1" >&2 || true
   kill "$qemu_pid" 2>/dev/null
   exit 1
 }
