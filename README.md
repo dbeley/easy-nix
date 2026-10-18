@@ -80,9 +80,11 @@ Two systemd timers, both of which can be turned off per host through the `easyNi
 options:
 
 - **daily**, `easy-nix-update-config`: `git fetch` + fast-forward the configuration,
-  update Flatpaks, then notify any logged-in user that a reboot will apply things.
-- **weekly**, `easy-nix-upgrade`: `nixos-rebuild boot --flake /etc/easy-nix#easy-nix
-  --no-write-lock-file`, then notify.
+  then update Flatpaks.
+- **weekly**, `easy-nix-upgrade`: fetch (as an `ExecStartPre`, so the two can never
+  race and the rebuild always builds what the remote has now), then `nixos-rebuild boot
+  --flake /etc/easy-nix#easy-nix --no-write-lock-file`, then notify any logged-in user
+  that a reboot will apply it.
 
 Three design decisions in there that matter more than the timers:
 

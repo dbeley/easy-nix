@@ -46,7 +46,10 @@ let
         TIMEOUT = "900";
         MODE = mode;
         QEMU = "${pkgs.qemu_kvm}/bin/qemu-kvm";
-        OVMF_FIRMWARE = "${pkgs.OVMF.firmware}/OVMF_CODE.fd";
+        # `pkgs.OVMF.firmware` is the code file itself, not a directory holding one.
+        # Appending a filename to it produces a path that does not exist, and QEMU then
+        # reports a missing firmware rather than anything pointing at the real mistake.
+        OVMF_FIRMWARE = "${pkgs.OVMF.firmware}";
       }
       ''
         mkdir -p $out
