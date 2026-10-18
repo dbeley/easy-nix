@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Formatting and static checks
+        run: nix build .#checks.x86_64-linux.pre-commit-check -L
+
+  eval:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every host, including the ARM one: an evaluation failure there is a broken
+        # flake for anyone who tries it, and it costs seconds to catch.
+        host:
+          - easy-nix
+          - easy-nix-live
+          - easy-nix-live-test
+          - easy-nix-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Evaluate ${{ matrix.host }}
+        run: |
+          nix eval --no-write-lock-file \
+            ".#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel.drvPath"
+
+  boot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Make /dev/kvm usable
+        run: |
+          # The runner user is not in the kvm group and cannot reconnect mid-job, so a
+          # udev rule is the only thing that works. Fail here rather than time out later.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -w /dev/kvm
+      - name: Boot the light image, BIOS then EFI
+        run: |
+          # extra-sandbox-paths is the whole point: the runner having /dev/kvm is not
+          # enough, because the build runs in a sandbox that does not expose it.
+          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
+          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
+
+  iso:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Build the installer ISO
+        run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
+      - name: Size and checksum
+        run: |
+          ls -lh result/iso/*.iso
+          sha256sum result/iso/*.iso | tee SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: easy-nix-iso
+          path: |
+            result/iso/*.iso
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7

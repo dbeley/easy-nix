@@ -1,0 +1,47 @@
+name: update-flake-lock
+
+# The only place `flake.lock` is ever moved.
+#
+# Machines deliberately do not do this themselves (`nixos-rebuild --no-write-lock-file`
+# in the update service): if every appliance bumped its own lock file, "it works on
+# mine" would be a statement about a moment rather than about a revision, and two
+# machines installed from the same ISO would drift apart within a week.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Update flake.lock
+        run: nix flake update
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- flake.lock; then
+            echo "flake.lock is already current"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b flake-lock
+          git add flake.lock
+          git commit -m "flake.lock: update inputs"
+          git push --force origin flake-lock
+
+          gh pr create \
+            --head flake-lock \
+            --base main \
+            --title "flake.lock: update inputs" \
+            --body "Automated \`nix flake update\`. Merging this is what eventually reaches the appliances: machines fast-forward the configuration, they never bump their own lock file." ||
+            echo "a pull request for flake-lock already exists"

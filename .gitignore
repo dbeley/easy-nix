@@ -1,0 +1,7 @@
+result
+result-*
+.direnv
+*.iso
+serial.log
+RELEASE_NOTES.md
+SHA256SUMS

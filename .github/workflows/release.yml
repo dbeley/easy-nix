@@ -1,0 +1,79 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - name: Make /dev/kvm usable
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -w /dev/kvm
+      - name: Build the ISO
+        run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
+      - name: Boot the image that is about to be published
+        run: |
+          # The light image is boot-tested on every push; this is the same assertion
+          # against the artifact that ships, applications and all. A step that has only
+          # ever run on a tag is untested code.
+          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
+          nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+      - name: Checksums
+        run: sha256sum result/iso/*.iso > SHA256SUMS
+      - name: Write the release notes
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "## easy-nix $TAG"
+            echo
+            echo "Installer ISO for x86_64. Write it to a USB stick, boot it, then either"
+            echo "launch **Install easy-nix** from the desktop or run \`sudo easy-nix-install\`"
+            echo "from a terminal."
+            echo
+            echo "| asset | size | sha256 |"
+            echo "| --- | --- | --- |"
+            for f in result/iso/*.iso; do
+              printf '| %s | %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -d' ' -f1)"
+            done
+            echo
+            echo "### Verify"
+            echo
+            echo '```sh'
+            echo "sha256sum -c SHA256SUMS"
+            echo "gh attestation verify $(basename "$(ls result/iso/*.iso)") --repo $REPO"
+            echo '```'
+            echo
+            echo "### What this release does not do"
+            echo
+            echo "- no disk encryption and no dual boot: installing erases the target disk"
+            echo "- no aarch64 ISO; ARM is an SD-card image, see the README"
+            echo "- the boot test asserts the image reaches userspace, not that every"
+            echo "  application in it launches"
+          } >RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: result/iso/*.iso
+      - uses: softprops/action-gh-release@v3
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            result/iso/*.iso
+            SHA256SUMS
+          fail_on_unmatched_files: true
