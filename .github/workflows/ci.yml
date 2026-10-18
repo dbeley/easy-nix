@@ -78,10 +78,26 @@ jobs:
             /usr/local/lib/android \
             /usr/share/dotnet \
             /opt/ghc \
-            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache \
             /usr/local/share/boost
           sudo docker image prune -af || true
           df -h /
+          # The paths above are the ones the current runner image uses, and that image
+          # changes (`ubuntu-latest` migrates to Ubuntu 26 from October 2026). Check the
+          # result here, where the message can say what is wrong, rather than letting the
+          # build fail minutes later on a full disk.
+          avail_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          case "$avail_gb" in
+            '' | *[!0-9]*)
+              echo "::error::could not read free space from df" >&2
+              exit 1
+              ;;
+          esac
+          echo "free on /: ${avail_gb}G"
+          if [ "$avail_gb" -lt 25 ]; then
+            echo "::error::only ${avail_gb}G free on /; the ISO build needs about 25G" >&2
+            exit 1
+          fi
       - name: Build the installer ISO
         run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
       - name: Size and checksum

@@ -18,16 +18,29 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Free disk space
         run: |
-          # See ci.yml: the default runner image does not leave room for a desktop
-          # closure, its squashfs and the ISO that ships both.
+          # See ci.yml. The guard at the end is the point of this step: it fails here,
+          # with a message that says what is wrong, instead of several minutes into the
+          # build with "No space left on device".
           sudo rm -rf \
             /usr/local/lib/android \
             /usr/share/dotnet \
             /opt/ghc \
-            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache \
             /usr/local/share/boost
           sudo docker image prune -af || true
           df -h /
+          avail_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          case "$avail_gb" in
+            '' | *[!0-9]*)
+              echo "::error::could not read free space from df" >&2
+              exit 1
+              ;;
+          esac
+          echo "free on /: ${avail_gb}G"
+          if [ "$avail_gb" -lt 25 ]; then
+            echo "::error::only ${avail_gb}G free on /; the ISO build needs about 25G" >&2
+            exit 1
+          fi
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
