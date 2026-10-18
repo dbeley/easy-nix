@@ -3,7 +3,7 @@
   full image cannot be built or booted (a 2-core VM, a CI runner without much disk).
 
   It proves that the live medium reaches userspace and that the Wayland session comes
-  up. It proves nothing about the applications, because it does not contain them — the
+  up. It proves nothing about the applications, because it does not contain them - the
   release workflow boots the real image for that.
 */
 {

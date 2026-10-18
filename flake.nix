@@ -1,5 +1,5 @@
 {
-  description = "easy-nix — a minimal, self-updating NixOS Wayland desktop";
+  description = "easy-nix - a minimal, self-updating NixOS Wayland desktop";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

@@ -5,7 +5,7 @@ on:
     branches: [main]
     # A documentation-only change cannot break an evaluation or a build, and the ISO build
     # is the most expensive thing here. The flake does embed its own source (the medium
-    # carries the configuration it installs), so a doc change does alter the artifact —
+    # carries the configuration it installs), so a doc change does alter the artifact -
     # which is why the release workflow, on a tag, always builds and boot-tests from
     # scratch rather than trusting the last green run.
     paths-ignore:

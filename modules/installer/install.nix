@@ -8,7 +8,7 @@
     2. partitions by label (ESP + NIXROOT), matching `modules/disk-layout.nix`. The
        installed system therefore mounts by label and keeps working whatever disk it
        ends up on;
-    3. installs with `nixos-install --flake /etc/easy-nix#easy-nix` — the medium's own
+    3. installs with `nixos-install --flake /etc/easy-nix#easy-nix` - the medium's own
        copy of the configuration, so the install is what you booted, not whatever the
        network serves today;
     4. clones the repository into the installed system so it can fast-forward its own

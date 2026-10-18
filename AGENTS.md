@@ -8,28 +8,28 @@ library and it exposes no library API.
 
 ## Layout
 
-- `flake.nix` — inputs and outputs. `flake-parts` + `treefmt-nix`; hosts are built in
+- `flake.nix` - inputs and outputs. `flake-parts` + `treefmt-nix`; hosts are built in
   `hosts/default.nix` and exposed as `nixosConfigurations`, `packages`, `evalTargets`
   and `checks`.
-- `hosts/default.nix` — `mkHost`, which wires `modules/base.nix`, home-manager and the
+- `hosts/default.nix` - `mkHost`, which wires `modules/base.nix`, home-manager and the
   `specialArgs` (`user`, `hostName`, `stateVersion`, `inputs`, `flakeSelf`).
-- `hosts/<host>/default.nix` — a system configuration; `hosts/<host>/home.nix` — the
+- `hosts/<host>/default.nix` - a system configuration; `hosts/<host>/home.nix` - the
   home-manager side of the same host.
-- `modules/base.nix` — what every host shares. Never a bootloader, never `fileSystems`,
+- `modules/base.nix` - what every host shares. Never a bootloader, never `fileSystems`,
   never the desktop.
-- `modules/disk-layout.nix` — partitions referenced by **label**
+- `modules/disk-layout.nix` - partitions referenced by **label**
   (`/dev/disk/by-partlabel/NIXROOT`), never by device node, so the installer can target
   `/dev/sda`, `/dev/nvme0n1` or `/dev/mmcblk0` and every later rebuild still resolves the
   same filesystems. Keep the partitioning step of `modules/installer/install.nix` in step
   with this file.
-- `modules/appliance/` — the self-update and reset machinery, behind the `easyNix.*`
+- `modules/appliance/` - the self-update and reset machinery, behind the `easyNix.*`
   options declared in `options.nix`.
-- `modules/desktop/` — niri configuration (home-manager) and the system-side session.
-- `modules/apps/` — one file per application group. Steam is inside a platform guard so
+- `modules/desktop/` - niri configuration (home-manager) and the system-side session.
+- `modules/apps/` - one file per application group. Steam is inside a platform guard so
   the aarch64 flavour can import the same set.
-- `modules/installer/` — `live.nix` makes a configuration bootable and assertable;
+- `modules/installer/` - `live.nix` makes a configuration bootable and assertable;
   `install.nix` adds `easy-nix-install` and is only on the release medium.
-- `.github/workflows/` — `ci.yml` (lint, evaluate every host, boot-test, build the ISO),
+- `.github/workflows/` - `ci.yml` (lint, evaluate every host, boot-test, build the ISO),
   `release.yml` (tag → build → boot-test the real image → attest → publish),
   `update-flake-lock.yml`.
 
@@ -65,7 +65,7 @@ just boot-test          # boots the light image, BIOS and EFI; needs /dev/kvm
 `evalTargets` exists because "does this host evaluate" has four different answers. A host
 that only exists to produce a medium is evaluated through its image variant, which is
 where its filesystem layout comes from; evaluating `system.build.toplevel` on those fails
-an assertion about a missing root filesystem, correctly — there is no such system.
+an assertion about a missing root filesystem, correctly - there is no such system.
 
 The boot test is the only thing that proves an image is an image. It needs the KVM device
 handed to the sandbox, or QEMU silently falls back to software emulation and the job times
@@ -96,7 +96,7 @@ prompt.
   terminal (`foot -e …`) or it runs with no tty and does nothing visible.
 - `environment.systemPackages` twice in the same module is a conflict, not a merge.
 - Inside a Nix `''` string, a shell `''${VAR}` needs escaping and `$VAR` does not.
-  Shellcheck passing does not prove the escaping worked — read the generated script
+  Shellcheck passing does not prove the escaping worked - read the generated script
   (`nix-store --realise <the .drv>`, then `$out/bin/<name>`).
 - In a git flake, `git add` before `nix eval` on a fresh checkout: untracked files are
   invisible to Nix, and the error points at a file you just wrote.

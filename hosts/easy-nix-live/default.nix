@@ -1,7 +1,7 @@
 /*
   The bootable installer.
 
-  Same applications as an installed machine, plus the install tool — so the medium can
+  Same applications as an installed machine, plus the install tool - so the medium can
   be used as a live system to check the machine works (wifi, screen, keyboard) before
   anything is written to disk. That is cheap insurance on the hardware this project
   targets.

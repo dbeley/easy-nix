@@ -11,13 +11,13 @@
   Everything here is defined **inside the `iso` image variant**, not on the host.
   `isoImage` is declared by the image module, which only that variant imports: setting
   it on the host configuration would be a definition of an option that does not exist
-  there. `image.modules.<variant>` is the supported way to specialise an image — the
+  there. `image.modules.<variant>` is the supported way to specialise an image - the
   same idea as `specialisation`, one level up.
 
   The marker writes to /dev/ttyS0 explicitly. `/dev/console` is not reliable for this:
   which device it points at depends on the order of the `console=` arguments, so a
   marker written there can end up nowhere. And `boot.consoleLogLevel` is the option
-  that actually raises kernel verbosity — putting `loglevel=` in `boot.kernelParams`
+  that actually raises kernel verbosity - putting `loglevel=` in `boot.kernelParams`
   loses to the value nixpkgs appends afterwards, leaving the serial console mute and
   every boot failure undiagnosable.
 */

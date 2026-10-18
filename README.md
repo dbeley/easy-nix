@@ -52,7 +52,7 @@ daemon or container runtime anywhere in the image.
 
 Everything under `/etc/easy-nix` is a git checkout that the machine fast-forwards.
 Editing it does not do what you want: the update service refuses to run while it has
-local modifications, rather than overwriting your work. That refusal is deliberate —
+local modifications, rather than overwriting your work. That refusal is deliberate -
 a distribution whose update silently deletes your changes is one nobody dares to edit.
 
 Machine-specific changes go in **`/etc/easy-nix-local.nix`**, which is imported at
@@ -164,7 +164,7 @@ host configurations at once. `just eval` does them one at a time, `just check` b
 only the formatting checks.
 
 `evalTargets` exists because "does this host evaluate" has four different answers. A
-host that only exists to produce a medium — the two live images and the ARM one — is
+host that only exists to produce a medium - the two live images and the ARM one - is
 evaluated through its image variant, which is where its filesystem layout comes from.
 Evaluating `system.build.toplevel` on those fails an assertion about a missing root
 filesystem, correctly: there is no such system.
@@ -195,7 +195,7 @@ scripts/nix/qemu-run.sh    the boot harness
 The idea of a self-updating, reset-able NixOS desktop, and the shape of the update
 timers, come from [nixbook](https://github.com/mkellyxp/nixbook) by Mike Kelly (MIT).
 easy-nix is a separate project rather than a fork: it targets Wayland and experienced
-users, and it replaces the piece of nixbook's design that makes customisation unsafe —
+users, and it replaces the piece of nixbook's design that makes customisation unsafe -
 an update that resets the configuration checkout to its remote.
 
 MIT licensed. See `LICENSE`.
