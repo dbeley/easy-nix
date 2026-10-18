@@ -33,16 +33,20 @@ daemon or container runtime anywhere in the image.
 
 ## Install
 
-1. Download the ISO from the [releases page](../../releases).
-2. Write it to a USB stick, then boot it. Verify the download first:
+1. Download the parts from the [releases page](../../releases). GitHub refuses a release
+   asset of 2 GiB or more and this image is about 4 GiB, so it ships as parts of 1900 MiB.
+2. Reassemble it and verify it before writing anything to a disk. `SHA256SUMS` names the
+   assembled image, so let it name the file you rebuild:
 
    ```sh
+   cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
    sha256sum -c SHA256SUMS
    gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
    ```
 
-3. Boot the stick. It comes up as a live system, so you can check the screen, the
-   keyboard and the wifi before anything is written to a disk.
+3. Write the assembled image to a USB stick, then boot it. It comes up as a live system,
+   so you can check the screen, the keyboard and the wifi before anything is written to a
+   disk. It carries the applications, so the install itself does not need the network.
 4. Either launch **Install easy-nix** from the desktop, or run it yourself:
 
    ```sh

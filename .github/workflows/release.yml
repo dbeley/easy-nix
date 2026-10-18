@@ -66,29 +66,56 @@ jobs:
           # user downloaded into, where `result/iso/...` does not exist.
           (cd result/iso && sha256sum *.iso) > SHA256SUMS
           cat SHA256SUMS
+      - name: Split the image for GitHub's asset limit
+        run: |
+          # GitHub refuses any release asset of 2 GiB or more, and this image is about
+          # 4 GiB because it carries the applications, which is what lets an install work
+          # without the network. Parts of 1900 MiB stay under the limit whatever the image
+          # grows to. The assembled image is kept, because the attestation below covers it
+          # rather than the parts.
+          cd result/iso
+          ISO=$(ls easy-nix-*.iso)
+          split -b 1900M --numeric-suffixes=1 --suffix-length=2 "$ISO" "$ISO.part-"
+          ls -lh
       - name: Write the release notes
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
+          ISO=$(basename "$(ls result/iso/*.iso)")
           {
             echo "## easy-nix $TAG"
             echo
-            echo "Installer ISO for x86_64. Write it to a USB stick, boot it, then either"
-            echo "launch **Install easy-nix** from the desktop or run \`sudo easy-nix-install\`"
-            echo "from a terminal."
+            echo "x86_64 installer. GitHub refuses a single release asset of 2 GiB or more and"
+            echo "this image is about 4 GiB, so it ships in parts. Reassemble it, and verify"
+            echo "the result before writing anything to a disk:"
             echo
-            echo "| asset | size | sha256 |"
+            echo '```sh'
+            echo "cat ${ISO}.part-* > $ISO"
+            echo "sha256sum -c SHA256SUMS"
+            echo '```'
+            echo
+            echo "Then write **$ISO** to a USB stick and boot it. It comes up as a live"
+            echo "system, so you can check the screen, the keyboard and the wifi before any"
+            echo "disk is touched, and it carries the applications, so the install itself does"
+            echo "not need the network. Launch **Install easy-nix** from the desktop, or run"
+            echo "\`sudo easy-nix-install\` from a terminal."
+            echo
+            echo "| part | size | sha256 |"
             echo "| --- | --- | --- |"
-            for f in result/iso/*.iso; do
+            for f in result/iso/*.part-*; do
               printf '| %s | %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -d' ' -f1)"
             done
+            echo
+            echo "Assembled: $(du -h "result/iso/$ISO" | cut -f1), sha256"
+            echo "\`$(sha256sum "result/iso/$ISO" | cut -d' ' -f1)\` - which is the line \`SHA256SUMS\`"
+            echo "records, and the digest the provenance below is filed against."
             echo
             echo "### Verify"
             echo
             echo '```sh'
             echo "sha256sum -c SHA256SUMS"
-            echo "gh attestation verify $(basename "$(ls result/iso/*.iso)") --repo $REPO"
+            echo "gh attestation verify $ISO --repo $REPO"
             echo '```'
             echo
             echo "### What this release does not do"
@@ -105,7 +132,9 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           body_path: RELEASE_NOTES.md
+          # The parts, never the assembled image: it is over the 2 GiB asset limit, and
+          # one oversized glob here is what makes this step fail after a 40-minute build.
           files: |
-            result/iso/*.iso
+            result/iso/*.part-*
             SHA256SUMS
           fail_on_unmatched_files: true
