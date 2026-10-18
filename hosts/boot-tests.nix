@@ -98,7 +98,13 @@ let
         mkdir -p $out
         export ISO="$(find ${image}/iso -name '*.iso' | head -1)"
         cd "$TMPDIR"
-        ${pkgs.bash}/bin/bash ${../nix/install-test.sh}
+        # The logs are copied on failure too: a check that fails without the serial
+        # output attached cannot be debugged, and getting back to the failure costs a
+        # full install.
+        if ! ${pkgs.bash}/bin/bash ${../nix/install-test.sh}; then
+          cp install.log boot.log $out/ 2>/dev/null || true
+          exit 1
+        fi
         cp install.log boot.log $out/
         echo "install=${name}" > $out/result
       '';
