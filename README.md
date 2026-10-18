@@ -1,5 +1,9 @@
 # easy-nix
 
+[![ci](https://github.com/dbeley/easy-nix/actions/workflows/ci.yml/badge.svg)](https://github.com/dbeley/easy-nix/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![NixOS unstable](https://img.shields.io/badge/NixOS-unstable-blue.svg?logo=NixOS&logoColor=white)](https://nixos.org)
+
 A minimal, self-updating NixOS desktop. Wayland only, x86_64, installed from an ISO
 that is built and boot-tested by CI.
 
