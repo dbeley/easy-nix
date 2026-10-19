@@ -293,13 +293,17 @@ in
         # network dies on "Could not resolve host: github.com" with the disk already
         # partitioned and mounted. Derived from the inputs rather than kept by hand: the
         # hand-kept list had already lost two of them.
+        # Every input, without filtering on `outPath`: in the pure evaluation that builds
+        # the image an input whose source is not yet in the store has no `outPath`
+        # attribute, so a guard on it drops exactly the inputs that need fetching - silently.
+        # Measured: one of twelve was dropped, and the install then reached for it over the
+        # network. `input.inputs or {}` is for inputs that are not flakes; `isAttrs` is for
+        # inputs that are plain paths.
         walk =
           set:
           lib.concatLists (
             lib.mapAttrsToList (
-              _: input:
-              (lib.optionals (lib.isAttrs input && input ? outPath) [ input.outPath ])
-              ++ (lib.optionals (lib.isAttrs input && input ? inputs) (walk input.inputs))
+              _: input: lib.optionals (lib.isAttrs input) ([ input.outPath ] ++ (walk (input.inputs or { })))
             ) set
           );
       in

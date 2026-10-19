@@ -51,11 +51,11 @@ args=(
   # which reads like a flake problem and is a missing network card. The value is quoted
   # because of its comma: unquoted, shellcheck reads it as an array element separator.
   #
-  # `dns=` names the resolver QEMU's user-mode networking forwards to. Without it, slirp
-  # takes the host's own resolver, which on a runner is the loopback stub of
-  # systemd-resolved - a name server that means nothing from inside the guest, so every
-  # lookup fails while the link itself is up.
-  -nic "user,model=virtio-net-pci,dns=1.1.1.1"
+  # No `dns=`: naming a resolver here made things worse. It replaced the host's working
+  # resolver with one the runner does not reach, and the guest stopped resolving entirely
+  # while the previous run had been fetching perfectly. Left alone, slirp uses the host's
+  # own configuration, which is what a user's machine has too.
+  -nic "user,model=virtio-net-pci"
 )
 
 # KVM is the difference between minutes and hours. Without it this test does not fail,
