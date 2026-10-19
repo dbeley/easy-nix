@@ -256,11 +256,21 @@ in
     })
   ];
 
-  # Everything needed to *evaluate* the configuration on the medium. Without the
-  # inputs in the store, `nixos-install` would have to reach the network to resolve
-  # the flake it is currently running from. Set inside the variant: `isoImage` is
-  # declared by the image module, which only that variant imports.
-  image.modules.iso.isoImage.storeContents = lib.unique (
+  # Everything the medium must carry, as dependencies of its own system rather than as
+  # extra ISO contents.
+  #
+  # `isoImage.storeContents` puts paths in the image, but a path outside the system's
+  # closure is not *registered* in the store the medium boots with: Nix sees it present and
+  # still rebuilds what it was asked for, then dies on the first source a sandboxed build
+  # cannot download. Measured on a built image: the system the installer installs was
+  # genuinely in the squashfs, and `nixos-install` rebuilt it anyway. Everything the live
+  # system itself uses is valid, so it is the closure that confers validity - and the
+  # closure is what this option changes.
+  #
+  # What goes in: the system the installer installs, so that installing is a copy rather
+  # than a build; and the flake's inputs, the inputs of the inputs included, so that
+  # evaluating the configuration on the medium needs no network.
+  system.extraDependencies = lib.unique (
     [ flakeSelf.outPath ]
     ++ (
       let
