@@ -19,8 +19,8 @@ check:
 # that is its image variant rather than a top-level nobody boots.
 eval:
     #!/usr/bin/env bash
-    for h in easy-nix easy-nix-live easy-nix-live-test easy-nix-arm; do
-      printf '%-22s ' "$h"
+    for h in easy-nix easy-nix-live easy-nix-live-test easy-nix-live-install-test easy-nix-arm; do
+      printf '%-26s ' "$h"
       nix eval --raw ".#evalTargets.$h"
     done
 
@@ -36,6 +36,11 @@ iso-test:
 boot-test:
     nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
     nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
+
+# Partition a virtual disk, install, then boot what was installed. Needs /dev/kvm, and
+# about 10 GB of free space for the disk it writes.
+install-test:
+    nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.install-test
 
 # Boot the image that ships, applications included. Slow.
 boot-test-release:

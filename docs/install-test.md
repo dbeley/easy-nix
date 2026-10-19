@@ -3,7 +3,9 @@
 The boot test proves the medium reaches userspace. It proves **nothing** about the
 installer: `easy-nix-install` has never partitioned a disk in that test, and no installed
 system has ever been started. This procedure closes that gap by hand, on a machine with
-KVM, until an automated version exists (see "Known gap" below).
+KVM. The same path also runs unattended (see "The automated version" below); this document
+stays for the parts it does not cover - the released medium, a physical disk, and the
+applications once the machine is up.
 
 Run it on any NixOS machine with `/dev/kvm` and about 60 GB free.
 
@@ -31,7 +33,13 @@ the install actually writes, not 32 GB.
 
 ## 3. Boot the medium
 
+Realise the firmware first, once per machine: `nix eval` prints a store path without
+building it, so a machine that has never built that output gets `Could not open
+'…OVMF_CODE.fd': No such file or directory`, which blames the firmware rather than the
+missing build. Note the `fd`: it is one of OVMF's named outputs, not its default one.
+
 ```sh
+nix build --no-link nixpkgs#OVMF.fd
 nix shell nixpkgs#qemu -c qemu-system-x86_64 \
   -M q35 -m 4096 -smp 4 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$(nix eval --raw nixpkgs#OVMF.firmware)" \
@@ -93,10 +101,32 @@ sudo nixos-rebuild boot --flake /etc/easy-nix#easy-nix
 That last one is the update path the timers run: if it fails, the appliance cannot
 update itself, which is the whole point of the project.
 
-## Known gap
+## The automated version
 
-This is a manual procedure, so it only runs when someone remembers. An automated version
-needs a way in without a screen, and the medium does not have one today: a serial getty
-(or an image variant that runs the installer at boot and writes its own marker to
-`/dev/ttyS0`, in the shape of `EASY_NIX_READY`) would make it testable in CI, on every
-push. Until then, this document is the test.
+This procedure is a convenience for a human. The same path runs unattended:
+
+```sh
+nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-test
+```
+
+It boots the medium this repository releases, plus an unattended install: the test
+configuration imports the released one and adds `easyNix.autoInstall`, which is set there
+and nowhere else. What gets installed is therefore what a user installs, from the same
+closure, and a change to the released medium is covered by this test without anyone keeping
+two configurations in step.
+
+The install does need a network, and that is measured rather than assumed: `nixos-install`
+works in the *target's* store, so it substitutes and assembles the system rather than
+copying it from the medium. The medium carries the runtime closure and the flake's inputs -
+1695 of the 12744 paths the system's build refers to; the rest are derivations and sources,
+which no image carries. Making that self-contained would mean shipping tens of gigabytes of
+build inputs, so the medium carries what it installs and asks the cache for the rest.
+
+It waits for the installer to report `EASY_NIX_INSTALLED` on the serial console, then boots
+the disk it has just written and waits for the installed machine to report `EASY_NIX_READY`
+- the marker every easy-nix machine writes when it reaches userspace, which is what makes
+the second assertion possible without a screen.
+
+What it does not cover, and what this document is still for: a real physical disk rather
+than a sparse file, and anything about the applications once the machine is up - the test
+asserts that a machine boots and installs, not that a browser opens.

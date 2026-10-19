@@ -204,9 +204,12 @@ Stated here rather than discovered later:
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.
 - The boot test asserts the image reaches userspace; it does not assert that every
   application in it launches.
-- **No automated install test.** `easy-nix-install` has never partitioned a disk in CI,
-  and no installed system has ever been started there. Until that changes,
-  [docs/install-test.md](docs/install-test.md) is the test.
+- **The install test uses a light medium.** `checks.x86_64-linux.install-test` partitions
+  a disk and boots what it installed, on EFI only, from a medium that is smaller than the
+  released one and fetches the system's closure rather than carrying it. The released
+  image is boot-tested separately on both firmware paths. What stays uncovered is a real
+  physical disk, and the applications once the machine is up. See
+  [docs/install-test.md](docs/install-test.md).
 
 ## Building
 
@@ -220,6 +223,8 @@ nix build .#packages.x86_64-linux.size-budget-installer       # print the measur
 nix build .#packages.x86_64-linux.closure-manifest-appliance  # what an install produces
 
 nix eval --raw .#evalTargets.<host>          # evaluate one host, the honest way
+nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-test
+                                             # partition a disk, install, boot it
 just boot-test                               # boot the light image, BIOS + EFI
 just fmt                                     # treefmt: nixfmt, statix, deadnix, shfmt
 ```
@@ -246,10 +251,12 @@ hosts/
   easy-nix/                the installed appliance
   easy-nix-live/           the released installer ISO
   easy-nix-live-test/      a light image, only so boot tests run anywhere
+  easy-nix-live-install-test/
+                           the same, plus an unattended install onto a disk
   easy-nix-arm/            the SD-card image (experimental)
-  boot-tests.nix           the QEMU checks
+  boot-tests.nix           the QEMU checks, including the one that installs
 modules/
-  base.nix                 locale, networking, audio, nix, the user
+  base.nix                 locale, networking, audio, nix, the user, the serial console
   disk-layout.nix          by-label partitions, systemd-boot
   appliance/               options, self-update, notifications, powerwash
   desktop/                 Wayland session and niri configuration
@@ -257,7 +264,8 @@ modules/
   installer/               live medium settings and easy-nix-install
 nix/
   qemu-run.sh              the boot harness
-  closure-manifest.nix     what an image is made of, published with every release
+  install-test.sh          installs onto a disk, then boots what it installed
+  closure-manifest.nix     what a system is made of, published with every release
   size-budget.nix          the measured ceiling that turns drift into a red check
 docs/
   budget.md                the measured sizes, and why the numbers are what they are

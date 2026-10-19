@@ -29,25 +29,9 @@
 }:
 {
   image.modules.iso = {
-    boot.kernelParams = [
-      "console=ttyS0,115200"
-      "console=tty0"
-    ];
-    boot.consoleLogLevel = 7;
-
-    systemd.services.easy-nix-ready = {
-      description = "Announce that the live medium reached userspace";
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        msg="EASY_NIX_READY label=${config.system.nixos.label}"
-        echo "$msg" > /dev/ttyS0 || true
-        echo "$msg" > /dev/console || true
-      '';
-    };
+    # The serial console, the kernel verbosity and the ready marker live in
+    # `modules/base.nix`: an installed machine needs them as much as a medium does, and
+    # the install test reads the marker from the system it has just installed.
 
     isoImage = {
       makeBiosBootable = true;
@@ -56,6 +40,18 @@
       # 32 characters maximum, and it becomes the filesystem label of the medium.
       volumeID = "EASY_NIX";
     };
+
+    # A medium is the one system that has to mount filesystems it did not boot from: the
+    # installer formats an ext4 root and a vfat ESP, and mounting either needs the driver
+    # in this system's closure. A medium has no `fileSystems` of its own, so nothing else
+    # pulls them in, and `mount` then fails on a partition `mkfs` has just written
+    # perfectly - it reports a bad superblock, which sends you looking at the wrong piece
+    # of the machine. Naming them here also makes the build resolve them, so a driver that
+    # does not exist fails the build instead of the installation.
+    boot.kernelModules = [
+      "ext4"
+      "vfat"
+    ];
 
     # iso-image.nix assigns this without `mkDefault`, so overriding it has to be a force.
     image.baseName = lib.mkForce "easy-nix-${config.system.nixos.label}";
