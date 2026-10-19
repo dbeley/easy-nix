@@ -112,8 +112,15 @@ nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-te
 It boots the medium this repository releases, plus an unattended install: the test
 configuration imports the released one and adds `easyNix.autoInstall`, which is set there
 and nowhere else. What gets installed is therefore what a user installs, from the same
-closure - no network involved, nothing built inside the guest - and a change to the
-released medium is covered by this test without anyone keeping two configurations in step.
+closure, and a change to the released medium is covered by this test without anyone keeping
+two configurations in step.
+
+The install does need a network, and that is measured rather than assumed: `nixos-install`
+works in the *target's* store, so it substitutes and assembles the system rather than
+copying it from the medium. The medium carries the runtime closure and the flake's inputs -
+1695 of the 12744 paths the system's build refers to; the rest are derivations and sources,
+which no image carries. Making that self-contained would mean shipping tens of gigabytes of
+build inputs, so the medium carries what it installs and asks the cache for the rest.
 
 It waits for the installer to report `EASY_NIX_INSTALLED` on the serial console, then boots
 the disk it has just written and waits for the installed machine to report `EASY_NIX_READY`
