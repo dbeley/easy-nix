@@ -245,8 +245,15 @@ in
     '';
   };
 
-  # The configuration being installed, on the medium. This is what makes the install
-  # offline-capable and reproducible: what you boot is what gets installed.
+  # The configuration being installed, on the medium, and the medium carries it rather than
+  # fetching it: what you boot is what gets installed.
+  #
+  # The install still needs a network, and the pull request that added the install test
+  # measured why: `nixos-install` works in the target's store, which is empty, so it
+  # assembles the system there from the cache rather than copying it from the medium. What
+  # is offline here is the configuration being installed, not the building of it - and an
+  # install of a *custom* configuration needs a network for every NixOS user, official
+  # installer included.
   environment.etc."easy-nix".source = flakeSelf.outPath;
 
   environment.systemPackages = [
