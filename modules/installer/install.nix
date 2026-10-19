@@ -182,7 +182,15 @@ let
       mount "$esp" /mnt/boot
 
       echo "==> installing easy-nix (this takes a while)"
-      nixos-install --flake "$config_dir#$host" --no-root-password
+      # `nixos-install` works in the *target's* store, and a store with no substituters
+      # builds everything from source. The first run that got this far tried to rebuild
+      # glibc and the toolchain in the target and died on a source it could not fetch:
+      # measured afterwards, the medium carries libunistring and pcre2 but no stdenv at
+      # all, and no image should. Naming the cache lets the target substitute what exists -
+      # which is everything except this configuration itself, the one thing the medium
+      # genuinely has and the one thing a build would otherwise have to reconstruct.
+      nixos-install --flake "$config_dir#$host" --no-root-password \
+        --option substituters "https://cache.nixos.org"
 
       echo "==> giving the installed system a checkout it can update itself from"
       mkdir -p /mnt/etc
