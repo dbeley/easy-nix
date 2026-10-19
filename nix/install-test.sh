@@ -50,7 +50,12 @@ args=(
   # resolve host: github.com", with the disk already partitioned, formatted and mounted -
   # which reads like a flake problem and is a missing network card. The value is quoted
   # because of its comma: unquoted, shellcheck reads it as an array element separator.
-  -nic "user,model=virtio-net-pci"
+  #
+  # `dns=` names the resolver QEMU's user-mode networking forwards to. Without it, slirp
+  # takes the host's own resolver, which on a runner is the loopback stub of
+  # systemd-resolved - a name server that means nothing from inside the guest, so every
+  # lookup fails while the link itself is up.
+  -nic "user,model=virtio-net-pci,dns=1.1.1.1"
 )
 
 # KVM is the difference between minutes and hours. Without it this test does not fail,
