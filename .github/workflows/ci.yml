@@ -163,7 +163,20 @@ jobs:
           # medium is what this job exists to build.
           # --no-link for the same reason as above: the artifact upload below reads
           # result/iso/*.iso, so ./result has to keep pointing at the ISO.
-          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.install-test
+          # `sandbox = false` is for this check alone, and for one reason: a Nix build
+          # sandbox has no network by design, so QEMU running inside it hands the guest an
+          # environment with no resolver at all. The diagnostic the harness prints before it
+          # starts any machine showed exactly that - an empty nameserver list - and every
+          # lookup inside the guest then failed while the link itself was up.
+          #
+          # It also explains the shape of the investigation: a public resolver made it
+          # worse, some fetches succeeded anyway (fixed-output derivations get the network
+          # from the daemon, not from the sandbox), and running this same script by hand on
+          # a developer machine always worked.
+          #
+          # The boot tests need no network, so they stay sandboxed.
+          nix build --no-link --option extra-sandbox-paths /dev/kvm --option sandbox false \
+            -L .#checks.x86_64-linux.install-test
       - uses: actions/upload-artifact@v7
         with:
           name: easy-nix-iso
