@@ -233,6 +233,18 @@ in
     };
     script = ''
       set -x
+      # Wait until the network not only exists but resolves something.
+      #
+      # `network-online.target` is satisfied as soon as NetworkManager reports it, which can
+      # be before the resolver answers. The installer then fails on its first lookup with
+      # "Could not resolve host" fourteen seconds after boot, while a later step of the very
+      # same run was fetching perfectly - so the network was never missing, only early.
+      # Bounded, so a medium without a network still reaches the installer and fails with
+      # the installer's own message rather than with this loop's.
+      for _ in $(seq 1 60); do
+        getent hosts cache.nixos.org >/dev/null 2>&1 && break
+        sleep 1
+      done
       if ${install}/bin/easy-nix-install --disk ${lib.escapeShellArg cfg.autoInstall} --yes; then
         msg="EASY_NIX_INSTALLED device=${cfg.autoInstall}"
       else
