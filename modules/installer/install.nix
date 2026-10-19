@@ -285,5 +285,17 @@ in
       in
       walk flakeSelf.inputs
     )
+    # And the system itself, so that installing it is a copy rather than a build.
+    #
+    # Sharing the applications is not enough: this medium runs `easy-nix-live`, which is a
+    # different system from the `easy-nix` the installer installs, so that system's store
+    # path is absent and `nixos-install` sets out to build it. It then fails on the first
+    # build-time dependency it cannot get - the bootstrap stdenv - which is a message about
+    # a compiler while the fault is an image that does not carry what it installs.
+    #
+    # The host name is the one the installer installs, from `host="easy-nix"` in the script
+    # below. The installer module is imported by media only, so this costs the light boot
+    # image nothing.
+    ++ [ flakeSelf.nixosConfigurations.easy-nix.config.system.build.toplevel ]
   );
 }
