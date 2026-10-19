@@ -23,7 +23,6 @@
   config,
   lib,
   pkgs,
-  inputs,
   flakeSelf,
   ...
 }:
@@ -261,16 +260,30 @@ in
   # inputs in the store, `nixos-install` would have to reach the network to resolve
   # the flake it is currently running from. Set inside the variant: `isoImage` is
   # declared by the image module, which only that variant imports.
-  image.modules.iso.isoImage.storeContents = [
-    flakeSelf.outPath
-  ]
-  ++ (with inputs; [
-    flake-parts
-    home-manager
-    nixos-hardware
-    treefmt-nix
-    git-hooks
-    llm-agents
-    nixpkgs
-  ]);
+  image.modules.iso.isoImage.storeContents = lib.unique (
+    [ flakeSelf.outPath ]
+    ++ (
+      let
+        # Everything a flake evaluation needs, the inputs of the inputs included.
+        #
+        # Listing only this flake's own inputs is not enough, and the failure is obscure:
+        # evaluating the configuration makes flake-parts resolve its own lock, which asks
+        # for nix-community/nixpkgs.lib - an input of an input. Missing from the medium, it
+        # is fetched during the install, so a medium advertised as installable without a
+        # network dies on "Could not resolve host: github.com" with the disk already
+        # partitioned and mounted. Derived from the inputs rather than kept by hand: the
+        # hand-kept list had already lost two of them.
+        walk =
+          set:
+          lib.concatLists (
+            lib.mapAttrsToList (
+              _: input:
+              (lib.optionals (lib.isAttrs input && input ? outPath) [ input.outPath ])
+              ++ (lib.optionals (lib.isAttrs input && input ? inputs) (walk input.inputs))
+            ) set
+          );
+      in
+      walk flakeSelf.inputs
+    )
+  );
 }

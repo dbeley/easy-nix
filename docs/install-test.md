@@ -109,12 +109,17 @@ This procedure is a convenience for a human. The same path runs unattended:
 nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-test
 ```
 
-It boots a light medium that installs itself (`easyNix.autoInstall`), waits for the
-installer to report `EASY_NIX_INSTALLED` on the serial console, then boots the disk it has
-just written and waits for the installed machine to report `EASY_NIX_READY` - the marker
-every easy-nix machine writes when it reaches userspace, which is what makes the second
-assertion possible without a screen.
+It boots the medium this repository releases, plus an unattended install: the test
+configuration imports the released one and adds `easyNix.autoInstall`, which is set there
+and nowhere else. What gets installed is therefore what a user installs, from the same
+closure - no network involved, nothing built inside the guest - and a change to the
+released medium is covered by this test without anyone keeping two configurations in step.
 
-What it does not cover, and what this document is still for: the *released* medium, which
-is larger and offline-capable where the test's is not, a real physical disk rather than a
-sparse file, and anything about the applications once the machine is up.
+It waits for the installer to report `EASY_NIX_INSTALLED` on the serial console, then boots
+the disk it has just written and waits for the installed machine to report `EASY_NIX_READY`
+- the marker every easy-nix machine writes when it reaches userspace, which is what makes
+the second assertion possible without a screen.
+
+What it does not cover, and what this document is still for: a real physical disk rather
+than a sparse file, and anything about the applications once the machine is up - the test
+asserts that a machine boots and installs, not that a browser opens.

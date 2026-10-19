@@ -1,30 +1,27 @@
 /*
-  The medium the install test boots: the light live image, plus the installer, plus an
-  unattended install onto the disk the test attaches.
+  The medium the install test boots: the released one, plus an unattended install onto the
+  disk the test attaches.
 
-  It is light for the same reason `easy-nix-live-test` is: it has to build and boot on a
-  runner, and it exists to exercise the installer, not the applications. The closure of
-  the system it installs therefore comes from the binary cache rather than from the
-  medium, which is the one difference from the released image - and the release
-  workflow boot-tests that one.
+  It imports the released medium rather than approximating it, and that is the point. An
+  earlier version was a second, lighter configuration that happened to include the
+  installer, so what it installed was not what a user installs: the light medium carries
+  neither the applications nor the system they make up, so `nixos-install` had to fetch and
+  build a desktop closure inside the guest. That needs a resolver working seconds after
+  boot and a writable store with room for the whole closure - a test of the network, not of
+  the installer, and it failed in CI for exactly that reason, twice, with the disk already
+  partitioned and mounted.
+
+  By importing the released configuration, the test installs what users install, from the
+  same closure, with no network involved; and any change to the released medium is covered
+  by this test without anyone remembering to keep two configurations in step.
+
+  `autoInstall` is set here and nowhere else: nothing that ships installs itself.
 */
 {
   ...
 }:
 {
-  imports = [
-    ../../modules/desktop/wayland.nix
-    ../../modules/installer
-  ];
+  imports = [ ../easy-nix-live ];
 
-  easyNix = {
-    enable = true;
-    # No update services on a medium: there is nothing to update, and the timers would
-    # fire during the install and slow it down.
-    update.enable = false;
-    update.upgrade = false;
-    powerwash.enable = false;
-    # The first virtio disk, which is where the test harness puts the target.
-    autoInstall = "/dev/vda";
-  };
+  easyNix.autoInstall = "/dev/vda";
 }
