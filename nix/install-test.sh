@@ -36,6 +36,30 @@ disk="disk.img"
 # Sparse: the test only pays for what the install writes.
 qemu-img create -f raw "$disk" "$DISK_SIZE" >/dev/null
 
+# The resolver the guest is told to use.
+#
+# QEMU's user-mode networking ignores loopback nameservers, and on a CI runner
+# `/etc/resolv.conf` points at exactly that: systemd-resolved's 127.0.0.53 stub. The guest
+# then boots with a working link and no way to resolve anything, which reads as a missing
+# network card - five retries per lookup, "Could not resolve host" for every fetch, and an
+# install that dies fourteen seconds in. An earlier attempt named a public resolver instead
+# and was worse: the runner does not reach it either.
+#
+# So: name the host's own first non-loopback server, and log both sides, so that the next
+# failure of this kind is legible in the step's output rather than inferred from a timeout.
+host_nameservers="$(awk '/^[[:space:]]*nameserver/ { print $2 }' /etc/resolv.conf 2>/dev/null)"
+host_dns="$(printf '%s\n' "$host_nameservers" | grep -v '^127\.' | head -1)"
+host_nameservers_display="$(printf '%s\n' "$host_nameservers" | tr '\n' ' ')"
+echo "[install-test] host resolv.conf nameservers: $host_nameservers_display" >&2
+if [ -n "$host_dns" ]; then
+  echo "[install-test] telling the guest to resolve through $host_dns" >&2
+  guest_netdev="user,model=virtio-net-pci,dns=$host_dns"
+else
+  echo "[install-test] the host has no non-loopback resolver: the guest inherits slirp's" >&2
+  echo "              default, which cannot work from a loopback stub - expect lookups to fail" >&2
+  guest_netdev="user,model=virtio-net-pci"
+fi
+
 args=(
   -machine q35
   -m "$MEM"
@@ -45,17 +69,10 @@ args=(
   -drive "if=pflash,format=raw,readonly=on,file=$OVMF_FIRMWARE"
   -drive "file=$disk,if=virtio,format=raw"
   # The network, because this medium is the light one: it carries the flake and its inputs
-  # but not the system it installs, so `nixos-install` has to fetch or build that. With no
-  # network device the guest resolves no names at all and the install dies on "Could not
-  # resolve host: github.com", with the disk already partitioned, formatted and mounted -
-  # which reads like a flake problem and is a missing network card. The value is quoted
-  # because of its comma: unquoted, shellcheck reads it as an array element separator.
-  #
-  # No `dns=`: naming a resolver here made things worse. It replaced the host's working
-  # resolver with one the runner does not reach, and the guest stopped resolving entirely
-  # while the previous run had been fetching perfectly. Left alone, slirp uses the host's
-  # own configuration, which is what a user's machine has too.
-  -nic "user,model=virtio-net-pci"
+  # but not the system it installs, so `nixos-install` has to fetch or build that. The value
+  # is quoted because of its comma: unquoted, shellcheck reads it as an array element
+  # separator.
+  -nic "$guest_netdev"
 )
 
 # KVM is the difference between minutes and hours. Without it this test does not fail,
