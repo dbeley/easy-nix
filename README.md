@@ -301,7 +301,7 @@ modules/
   disk-layout.nix          by-label partitions, systemd-boot
   appliance/               options, self-update, notifications, powerwash
   desktop/                 Wayland session, labwc and waybar configuration
-  apps/                    browsers, office, opencode
+  apps/                    browsers, pi
   installer/               live medium settings and easy-nix-install
 nix/
   qemu-run.sh              the boot harness, and the markers it waits for
