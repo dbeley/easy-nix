@@ -4,8 +4,7 @@
   There is no X server in this system: `services.xserver.enable` is asserted false
   rather than merely left alone, because "Wayland only" is the point of the project and
   a dependency pulling X in would otherwise go unnoticed until a machine booted into it.
-  Applications that need X (Steam, Chromium's older paths) go through Xwayland, which
-  `programs.labwc` starts for us; there is no X server for them to talk to directly.
+  An application that needs X goes through Xwayland, which `programs.labwc` starts.
 */
 {
   config,
@@ -25,13 +24,10 @@ let
     pkgs.nixos-artwork.wallpapers."gradient-grey"
   }/share/wallpapers/gradient-grey/contents/images/2560x1440.png";
 
-  # `labwc-themes` is not in nixpkgs, and the compositor's own default is the Openbox
-  # Clearlooks theme, which looks like 2005. `labAdwaita-dark` is the theme the labwc
-  # project ships for exactly this: an Adwaita-shaped dark titlebar that matches the
-  # panel and the wallpapers that come with the distribution.
-  #
-  # Pinned by revision rather than tracked: an image that rebuilds itself nightly off a
-  # moving branch is an image whose desktop changes without anybody deciding it should.
+  # `labwc-themes` is not in nixpkgs, and the compositor's own default is the 2005-looking
+  # Openbox Clearlooks theme. `labAdwaita-dark` matches the panel and the wallpaper.
+  # Pinned by revision: an image that rebuilds nightly off a moving branch changes its
+  # desktop without anybody deciding it should.
   labwcThemes = pkgs.stdenvNoCC.mkDerivation {
     pname = "labwc-themes";
     version = "6a2e363";
@@ -57,16 +53,9 @@ in
   services.getty.autologinUser = lib.mkIf cfg.autologin user;
 
   environment.loginShellInit = lib.mkIf cfg.autologin ''
-    # Only the first console, and only once.
-    #
-    # Both conditions are needed. `WAYLAND_DISPLAY` alone would be enough for a
-    # compositor that never re-sources this file, but the login shell is sourced again by
-    # anything that opens a login shell on this tty - and the guard has to survive that.
-    # The exported variable is inherited across it, which is the only reason it works.
-    #
-    # This was measured, not imagined: with `niri-session`, which re-executes itself
-    # through a login shell, guarding on display alone re-execed the launcher once a
-    # second and the desktop never started.
+    # Only on the first console, and only once. Anything that opens a login shell on
+    # this tty re-sources this file, so the guard cannot be `WAYLAND_DISPLAY` alone: the
+    # exported flag is what survives the re-source.
     if [ -z "''${WAYLAND_DISPLAY:-}" ] &&
       [ -z "''${EASY_NIX_SESSION_LAUNCHED:-}" ] &&
       [ "$(tty)" = "/dev/tty1" ]; then
@@ -80,17 +69,10 @@ in
   '';
 
   # --- graphics -------------------------------------------------------------
-  # `/run/opengl-driver` is not about 3D quality: a compositor looks for a render node
-  # and a working EGL/GBM driver before it will drive an output, and niri - the previous
-  # choice - skipped software renderers on purpose ("software EGL renderers are
-  # skipped"), so it started, listened on its socket, answered its own IPC and reported
-  # `outputs=0` on a screen that never changed. labwc, on wlroots, would fall back to
-  # pixman and draw; the driver is still what makes it draw at a usable speed, and it is
-  # what the boot test's output assertion exercises.
-  #
-  # It belongs here and not in `modules/apps/steam.nix`, where it was: Steam is x86-only,
-  # so the aarch64 flavour - which has a desktop and no Steam - was left with no renderer
-  # at all. Measured on the light image before the move: same `outputs=0`.
+  # A compositor wants a render node and an EGL/GBM driver before it drives an output;
+  # without them labwc falls back to pixman, draws slowly, and the boot test's output
+  # assertion finds nothing. It lives here rather than in an application module because
+  # the aarch64 flavour has a desktop too.
   hardware.graphics.enable = true;
 
   # What a graphical desktop pulls in by default, and this image does not want.
@@ -103,11 +85,9 @@ in
   # the GNOME portal did not touch it, which is what that measurement was for.
   services.speechd.enable = false;
 
-  # The compositor falls back to a theme called `default` when nothing says otherwise,
-  # and this system installs no such theme: `error loading xcursor default@24: no
-  # default icon`, which is the oversized pointer. Name one that exists. Same for the
-  # keyboard: niri used to carry `layout = "fr"` in its own config, and wlroots reads the
-  # layout from these instead, so the French AZERTY layout outlives the compositor.
+  # The compositor's fallback cursor theme is called `default`, which nothing here
+  # installs - that is the oversized pointer. The keyboard layout is read from the
+  # environment, not from a compositor config file.
   environment.sessionVariables = {
     XCURSOR_THEME = "Adwaita";
     XCURSOR_SIZE = "24";
@@ -121,18 +101,13 @@ in
   programs.labwc.enable = true;
 
   # --- portals --------------------------------------------------------------
+  # `xdg.portal` puts `/share/xdg-desktop-portal` on `pathsToLink` itself, so the module
+  # owns the plumbing and this only names the implementation.
   xdg.portal = {
     enable = true;
-    extraPortals = with pkgs; [
-      xdg-desktop-portal-gtk
-      # gnome portal removed: labwc + gtk/wlr portals are what the session uses
-    ];
+    extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
     config.common.default = lib.mkDefault "gtk";
   };
-
-  # home-manager's niri module links portal definitions; without this the portals it
-  # installs are invisible to the session.
-  environment.pathsToLink = [ "/share/xdg-desktop-portal" ];
 
   # --- secrets --------------------------------------------------------------
   services.gnome.gnome-keyring.enable = true;
@@ -197,15 +172,13 @@ in
 
   # --- the VM a developer boots ---------------------------------------------
   #
-  # `just run-vm` builds nixpkgs' `system.build.vm`. Two things follow from that. Its
-  # runner leaves QEMU on default `-vga std`, a bochs card mesa has no driver for, so the
-  # device has to be named here rather than on the command line. And it is the same
-  # decision as `just run-iso`: 2D virtio, not virgl. niri pinned virgl because it
-  # refused software renderers; labwc draws through pixman, and the GL path is what makes
-  # a virgl guest render the pointer inverted.
+  # `just run-vm` builds nixpkgs' `system.build.vm`, whose runner leaves QEMU on default
+  # `-vga std` - a bochs card mesa has no driver for - so the device is named here. 2D
+  # virtio, not virgl, for the same reason as `just run-iso`: on the GL path a virgl
+  # guest renders the pointer inverted.
   #
-  # `vmVariant` and not `virtualisation.*` directly: since nixpkgs split `build-vm` out,
-  # the QEMU options live in the nested configuration that produces the runner.
+  # `vmVariant` and not `virtualisation.*`: since nixpkgs split `build-vm` out, the QEMU
+  # options live in the nested configuration that produces the runner.
   virtualisation.vmVariant.virtualisation.qemu.options = [
     "-device virtio-vga"
     "-display gtk"

@@ -1,18 +1,13 @@
 /*
   labwc and waybar, user side.
 
-  labwc is a floating, stacking compositor on wlroots: Openbox's window model, on
-  Wayland, with no X server anywhere. That is the point of choosing it - niri's
-  scrollable tiling is elegant and unlike anything a person has used before, and this
-  appliance is meant to feel like a computer rather than to teach a window model. Windows
-  have titlebars, dragging one moves it, maximising fills the screen, alt-tab cycles.
+  labwc is a floating, stacking compositor on wlroots: Openbox's window model on Wayland,
+  no X server anywhere. Windows have titlebars, dragging moves them, alt-tab cycles - an
+  appliance should feel like a computer, not teach a window model. waybar is the panel.
 
-  waybar is the other half of "familiar": a panel with the clock, the system tray, the
-  network and the volume. It is the only new daemon this switch adds.
-
-  Kept small on purpose. Anything that can be a systemd user unit is one (mako,
-  swayidle) rather than a line in the compositor's config: a service that crashes is
-  restarted, a spawned process is not.
+  Anything that can be a systemd user unit is one (waybar, mako, swayidle) rather than a
+  line in the compositor's config: a service that crashes is restarted, a spawned
+  process is not.
 */
 {
   lib,
@@ -189,17 +184,13 @@ let
     </openbox_menu>
   '';
 
-  # labwc runs this file as a shell script once the compositor is up. Importing the
-  # environment is what lets `graphical-session.target` hand the Wayland socket to the
-  # user units: without it they start without WAYLAND_DISPLAY and every one of them
-  # fails with "failed to connect to display".
+  # labwc runs this once the compositor is up. The import is what lets the user units see
+  # WAYLAND_DISPLAY; without it each fails with "failed to connect to display".
   autostart = ''
     systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
-    # Not `start graphical-session.target`: systemd marks that target
-    # RefuseManualStart=yes, because a session manager is supposed to pull it in, not to
-    # start it. `easy-nix-session.service` exists only to Want it, which is a dependency
-    # request rather than a manual start - measured: the direct call is refused with
-    # "may be requested by dependency only", and every unit below then never ran.
+    # `graphical-session.target` is RefuseManualStart=yes, so this starts a unit that
+    # only Wants it: the direct call is refused with "may be requested by dependency
+    # only", and every unit below then never runs.
     systemctl --user start --no-block easy-nix-session.service
   '';
 
@@ -297,6 +288,17 @@ let
       color: #f7768e;
     }
   '';
+  # Session units differ only in their Service block: same target, same policy.
+  sessionUnit = description: service: {
+    Unit = {
+      Description = description;
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = service;
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
 in
 {
   xdg.configFile."labwc/rc.xml".text = rcXml;
@@ -308,11 +310,11 @@ in
   xdg.configFile."waybar/config".text = builtins.toJSON waybarConfig;
   xdg.configFile."waybar/style.css".text = waybarStyle;
 
-  # Session services. Bound to graphical-session.target, which the autostart script
-  # above brings up.
-  # A unit whose only job is to Want `graphical-session.target`: systemd refuses a
-  # manual start of that target, so the session's autostart starts *this* and the target
-  # comes up as its dependency.
+  # Session services: everything hangs off `graphical-session.target`, which the
+  # autostart brings up, and only the Service block differs between them.
+
+  # A unit whose only job is to Want `graphical-session.target`: systemd refuses a manual
+  # start of the target, so the autostart starts this and the target follows.
   systemd.user.services.easy-nix-session = {
     Unit = {
       Description = "Pull up graphical-session.target";
@@ -326,73 +328,36 @@ in
     };
   };
 
-  systemd.user.services.waybar = {
-    Unit = {
-      Description = "Panel: clock, tray, network, volume";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      ExecStart = "${lib.getExe pkgs.waybar}";
-      Restart = "on-failure";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
+  systemd.user.services.waybar = sessionUnit "Panel: clock, tray, network, volume" {
+    ExecStart = "${lib.getExe pkgs.waybar}";
+    Restart = "on-failure";
   };
 
-  systemd.user.services.mako = {
-    Unit = {
-      Description = "mako notification daemon";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      ExecStart = "${pkgs.mako}/bin/mako";
-      Restart = "on-failure";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
+  systemd.user.services.mako = sessionUnit "mako notification daemon" {
+    ExecStart = "${pkgs.mako}/bin/mako";
+    Restart = "on-failure";
   };
 
-  systemd.user.services.swayidle = {
-    Unit = {
-      Description = "Blank the screen when idle";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      # No lock screen, and no password to unlock one with: see
-      # `easyNix.user.initialPassword`, which defaults to null. `wlopm` is the output
-      # power management client every wlroots compositor speaks; labwc included.
-      ExecStart = "${pkgs.swayidle}/bin/swayidle -w timeout 600 '${lib.getExe dpms} off' resume '${lib.getExe dpms} on'";
-      Restart = "on-failure";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
+  systemd.user.services.swayidle = sessionUnit "Blank the screen when idle" {
+    # No lock screen: there is no password to unlock one with.
+    ExecStart = "${pkgs.swayidle}/bin/swayidle -w timeout 600 '${lib.getExe dpms} off' resume '${lib.getExe dpms} on'";
+    Restart = "on-failure";
   };
 
-  systemd.user.services.easy-nix-session-report = {
-    Unit = {
-      Description = "Announce on the serial console that the Wayland session is up";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      # `oneshot` and not a daemon: it prints one line and has nothing left to do. A
-      # failing exit status is left alone rather than hidden, so a session that cannot
-      # reach its own compositor says so in `systemctl --user status`.
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = lib.getExe sessionReport;
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
-  };
+  systemd.user.services.easy-nix-session-report =
+    sessionUnit "Announce on the serial console that the Wayland session is up"
+      {
+        # `oneshot`: it prints one line and exits. A failing exit status is left visible in
+        # `systemctl --user status` rather than hidden.
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = lib.getExe sessionReport;
+      };
 
-  # `pcmanfm-desktop-pref.desktop` runs `pcmanfm --desktop-pref`, which asks a desktop
-  # manager for its settings. There is no desktop manager to ask, and there cannot be
-  # one: `pcmanfm --desktop` segfaults on Wayland (modules/desktop/wayland.nix has the
-  # measurement). The entry is the only thing that turns that into a dialog on screen,
-  # and a button that can only fail is worse than an absent feature.
-  #
-  # `~/.local/share` is searched before the system data dirs, so this shadows the real
-  # file rather than editing a package.
+  # `pcmanfm-desktop-pref.desktop` asks a desktop manager for its settings, and there
+  # cannot be one: `pcmanfm --desktop` segfaults on Wayland (see wayland.nix). Shadowing
+  # it in `~/.local/share` - searched before the system data dirs - hides a button whose
+  # only outcome is a dialog.
   xdg.dataFile."applications/pcmanfm-desktop-pref.desktop".text = ''
     [Desktop Entry]
     Type=Application
@@ -402,10 +367,8 @@ in
 
   xdg.userDirs = {
     enable = true;
-    # Pinned to the value home-state-version 25.11 implies: the default flips at 26.05,
-    # and a silent flip changes what `$XDG_DESKTOP_DIR` means to everything started from
-    # the session. The directories themselves are written to ~/.config/user-dirs.dirs,
-    # which is where the applications that care read them.
+    # Written to ~/.config/user-dirs.dirs, where applications read them, and exported so
+    # that everything started from the session agrees.
     setSessionVariables = true;
     createDirectories = true;
     desktop = "${config.home.homeDirectory}/Desktop";
