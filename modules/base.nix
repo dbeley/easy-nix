@@ -63,6 +63,12 @@
 
   boot.tmp.useTmpfs = true;
 
+  # Nothing here imports a ZFS root, and the default value of this option - `true` until
+  # 26.11 - exists for machines that import a pool named `root` at boot. On an appliance
+  # that would be the exact disaster the option guards against, and the option says so
+  # itself in an evaluation warning. Off, without needing a pool to be absent.
+  boot.zfs.forceImportRoot = false;
+
   services.fstrim.enable = true;
   services.journald.settings.Journal = {
     SystemMaxUse = "100M";
@@ -122,6 +128,11 @@
       "wheel"
       "video"
       "audio"
+      # The session report (nix/session-report.sh) writes its marker to /dev/ttyS0,
+      # which is root:tty 0660. Without this the boot test's second assertion depends on
+      # the journal being forwarded to a console it does not own, which is a thing that
+      # works until it does not.
+      "tty"
     ];
     shell = pkgs.bash;
     # Only applied while the account has no password of its own. `users.mutableUsers` is

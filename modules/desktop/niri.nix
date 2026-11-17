@@ -6,10 +6,25 @@
   restarted, a spawned process is not.
 */
 {
+  lib,
   pkgs,
   config,
   ...
 }:
+let
+  # The session's own report, packaged like the scripts in `nix/`: runtime dependencies
+  # on PATH, and shellcheck run over the text at build time. It is only ever started by
+  # the session, so it has no business in `environment.systemPackages`.
+  sessionReport = pkgs.writeShellApplication {
+    name = "easy-nix-session-report";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gnugrep
+      niri
+    ];
+    text = builtins.readFile ../../nix/session-report.sh;
+  };
+in
 {
   wayland.windowManager.niri = {
     enable = true;
@@ -124,8 +139,30 @@
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
+  systemd.user.services.easy-nix-session-report = {
+    Unit = {
+      Description = "Announce on the serial console that the Wayland session is up";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      # `oneshot` and not a daemon: it prints one line and has nothing left to do. A
+      # failing exit status is left alone rather than hidden, so a session that cannot
+      # reach its own compositor says so in `systemctl --user status`.
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = lib.getExe sessionReport;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   xdg.userDirs = {
     enable = true;
+    # Pinned to the value home-state-version 25.11 implies: the default flips at 26.05,
+    # and a silent flip changes what `$XDG_DESKTOP_DIR` means to everything started from
+    # the session. The directories themselves are written to ~/.config/user-dirs.dirs,
+    # which is where the applications that care read them.
+    setSessionVariables = true;
     createDirectories = true;
     desktop = "${config.home.homeDirectory}/Desktop";
     documents = "${config.home.homeDirectory}/Documents";

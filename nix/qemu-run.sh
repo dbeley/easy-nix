@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Boot an ISO under QEMU and report whether the image reached userspace.
+# Boot an ISO under QEMU and report whether the image reached userspace, and - when a
+# second marker is given - whether the graphical session came up on top of it.
 #
 # Two modes in one script:
 #   - MARKER unset: interactive, the terminal is handed to QEMU. For a human.
 #   - MARKER set: QEMU runs detached, the script waits for the marker to appear on the
 #     serial console, kills QEMU, and exits non-zero if the deadline passes first.
+#
+# SECOND_MARKER, when set, is waited for *after* MARKER, within the same boot and the
+# same deadline. The order is the assertion: a session marker that arrives before
+# userspace would mean the marker is being written by something other than the session,
+# and a separate run would cost another boot to learn less.
 #
 # The exit status is the whole point: `nix build` on the check that drives this either
 # succeeds, meaning the image booted, or fails with the serial log attached.
@@ -16,6 +22,7 @@ MACHINE="${MACHINE:-q35}"
 MEM="${MEM:-2048}"
 CPUS="${CPUS:-2}"
 MARKER="${MARKER:-}"
+SECOND_MARKER="${SECOND_MARKER:-}"
 TIMEOUT="${TIMEOUT:-900}"
 
 [ -n "${QEMU:-}" ] || {
@@ -62,9 +69,17 @@ qpid=$!
 
 deadline=$(($(date +%s) + TIMEOUT))
 found=0
+second=0
 while kill -0 "$qpid" 2>/dev/null; do
-  if grep -q -- "$MARKER" "$log" 2>/dev/null; then
+  if [ "$found" = 0 ] && grep -q -- "$MARKER" "$log" 2>/dev/null; then
     found=1
+    # Nothing to wait for beyond the first marker: kill QEMU now rather than spend the
+    # rest of the deadline watching a boot that has already proved its point.
+    [ -n "$SECOND_MARKER" ] || break
+  fi
+  if [ "$found" = 1 ] && [ -n "$SECOND_MARKER" ] &&
+    grep -q -- "$SECOND_MARKER" "$log" 2>/dev/null; then
+    second=1
     break
   fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -83,12 +98,20 @@ done
 kill -KILL "$qpid" 2>/dev/null
 wait "$qpid" 2>/dev/null
 
-if [ "$found" = 1 ]; then
+if [ "$found" = 1 ] && { [ -z "$SECOND_MARKER" ] || [ "$second" = 1 ]; }; then
   echo "OK: marker seen (mode $MODE)"
+  if [ -n "$SECOND_MARKER" ]; then
+    echo "OK: second marker seen (mode $MODE)"
+  fi
   exit 0
 fi
 
-echo "FAILURE: marker not seen after ${TIMEOUT}s (mode $MODE)" >&2
+if [ "$found" = 1 ]; then
+  echo "FAILURE: '$MARKER' seen but '$SECOND_MARKER' not after ${TIMEOUT}s (mode $MODE)" >&2
+  echo "         userspace came up; the graphical session did not report itself." >&2
+else
+  echo "FAILURE: marker not seen after ${TIMEOUT}s (mode $MODE)" >&2
+fi
 echo "--- last 40 lines of $log ---" >&2
 tail -40 "$log" >&2
 exit 1
