@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
@@ -45,3 +45,21 @@ jobs:
             --title "flake.lock: update inputs" \
             --body "Automated \`nix flake update\`. Merging this is what eventually reaches the appliances: machines fast-forward the configuration, they never bump their own lock file." ||
             echo "a pull request for flake-lock already exists"
+      - name: Start the build the automerge waits for
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A pull request opened with `GITHUB_TOKEN` gets no workflow runs: GitHub
+          # suppresses the events that token creates, which is the same rule that makes
+          # a pushed tag not start a second build. Without this dispatch, this pull request
+          # would sit with no checks at all and `automerge.yml` would have nothing green to
+          # merge on - and the honest alternative, merging on nothing, is worse.
+          #
+          # `workflow_dispatch` rather than a comment or a label: it runs `ci.yml` with an
+          # event name that is not `pull_request`, so the ISO job (which is skipped on pull
+          # requests) does run, and the merge decision includes a burned ISO and a boot
+          # test of it. A lock bump that breaks the image is exactly the change this is
+          # meant to catch.
+          gh workflow run ci.yml --ref flake-lock
+          sleep 10
+          gh run list --workflow ci.yml --branch flake-lock --limit 1

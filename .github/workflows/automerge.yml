@@ -1,0 +1,66 @@
+name: automerge
+
+# The second half of the lock-bump chain.
+#
+# `update-flake-lock.yml` cannot sit and wait for a build that takes the better part of an
+# hour: it opens the pull request, dispatches CI on that branch (a `GITHUB_TOKEN` pull
+# request gets no runs of its own), and stops. Nothing then acted on the green result, so
+# the pull request waited for a person - and the appliances stayed on whatever lock file
+# the last person merged, which is not what "weekly `nix flake update`" promised.
+#
+# This workflow resumes there, and only for the branch the bot owns: every human pull
+# request is left alone.
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+
+permissions:
+  contents: write # merge, and delete the branch that was merged
+  pull-requests: write # the merge
+  actions: read # resolve the run that triggered this one
+
+jobs:
+  merge:
+    # A green run, on the bot's branch, and nothing else. Project rule: a red run merges
+    # nothing at all - better to stay on the last known-good lock file than to hand the
+    # appliances a nixpkgs that does not build.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_branch == 'flake-lock'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Merge the lock bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head flake-lock \
+                 --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "no open pull request on flake-lock, nothing to merge"
+            exit 0
+          fi
+
+          # `--squash`: the bot force-pushes this branch every week, so a chain of merge
+          # commits would be noise about a file with two lines in it. (`depannix` merges
+          # with `--merge` for the opposite reason: its commit carries the version its
+          # release tag names, and squashing would rewrite what the tag points at. Here the
+          # tag is a person's decision and is not derived from this commit.)
+          gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch
+
+          # What a reader should know about the checks they are looking at: the run that
+          # decided this merge is not on the pull request. It is a `workflow_dispatch` run
+          # on the branch, because a `GITHUB_TOKEN` pull request gets none of its own.
+          {
+            echo "### Merged #$pr"
+            echo
+            echo "CI was green on $RUN_URL, so this lock bump merged itself."
+            echo
+            echo "The push to \`main\` now builds the image again, and the next appliance to"
+            echo "rebuild picks the new lock file up. Machines never bump their own:"
+            echo "\`--no-write-lock-file\` is what keeps two machines installed from the same"
+            echo "ISO identical."
+          } >> "$GITHUB_STEP_SUMMARY"
