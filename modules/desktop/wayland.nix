@@ -52,12 +52,42 @@ let
   };
   # One script rather than a shell line in the unit: the wallpaper path and the mode are
   # arguments, and a unit file is not the place to discover that they were mis-quoted.
+  #
+  # The order below is the whole point. `--set-wallpaper` is not a command that works on
+  # its own: pcmanfm looks for a running desktop manager first and, finding none, puts up
+  # "Desktop manager is not active." and sets nothing (src/pcmanfm.c, the
+  # `desktop == NULL` branch). Run before `--desktop`, as it was, it produced exactly two
+  # symptoms from one cause - the dialog at startup, and a manager that then had no
+  # wallpaper to draw.
+  #
+  # `--set-wallpaper` reaches a running manager over pcmanfm's single-instance socket and
+  # is fire-and-forget: it exits before the manager has answered, so waiting for the
+  # socket is waiting for the manager to exist, not for the wallpaper to be applied. The
+  # socket is named after DISPLAY (`pcmanfm-socket-<host>-<screen>`), so it is globbed
+  # rather than spelled out.
   desktopManager = pkgs.writeShellApplication {
     name = "easy-nix-desktop";
-    runtimeInputs = [ pkgs.pcmanfm ];
+    runtimeInputs = [
+      pkgs.pcmanfm
+      pkgs.coreutils
+    ];
     text = ''
-      pcmanfm --set-wallpaper ${wallpaper} --wallpaper-mode=fit
-      exec pcmanfm --desktop
+      pcmanfm --desktop &
+      manager=$!
+
+      for _ in {1..100}; do
+        compgen -G "''${XDG_RUNTIME_DIR:-/tmp}/pcmanfm-socket-*" >/dev/null && break
+        sleep 0.1
+      done
+
+      # Not fatal: a desktop with no wallpaper beats no desktop, and the failure is
+      # visible in the journal rather than swallowed.
+      pcmanfm --set-wallpaper ${wallpaper} --wallpaper-mode=fit ||
+        echo "easy-nix-desktop: the wallpaper was not applied" >&2
+
+      # `wait` and not `exec`: the manager is the background job above, and its exit
+      # status is what `Restart=on-failure` reacts to.
+      wait "$manager"
     '';
   };
 in
@@ -177,8 +207,10 @@ in
   # running" - measured, on a booted image, and a menu entry that cannot work is worse
   # than no entry.
   #
-  # `--set-wallpaper` writes the image into pcmanfm's own configuration and applies it in
-  # the same call, so a fresh account gets a wallpaper instead of a first-run dialog.
+  # The wallpaper goes through that manager rather than into a config file, so the
+  # session has no generated `pcmanfm.conf` to keep in step with the image: see the
+  # ordering comment on `desktopManager` above for why it is the second call and not
+  # the first.
   systemd.user.services.easy-nix-desktop = {
     description = "Desktop manager: wallpaper and desktop icons";
     partOf = [ "graphical-session.target" ];
@@ -192,17 +224,18 @@ in
 
   # --- the VM a developer boots ---------------------------------------------
   #
-  # `just run-vm` builds nixpkgs' `system.build.vm`, whose runner leaves QEMU on its
-  # default VGA: a bochs card mesa has no driver for. niri skips software EGL renderers,
-  # so the compositor starts headless and the window shows the boot messages forever -
-  # the desktop never appears, and nothing in it says why. virgl gives the guest a
-  # renderer niri accepts.
+  # `just run-vm` builds nixpkgs' `system.build.vm`. Two things follow from that. Its
+  # runner leaves QEMU on default `-vga std`, a bochs card mesa has no driver for, so the
+  # device has to be named here rather than on the command line. And it is the same
+  # decision as `just run-iso`: 2D virtio, not virgl. niri pinned virgl because it
+  # refused software renderers; labwc draws through pixman, and the GL path is what makes
+  # a virgl guest render the pointer inverted.
   #
   # `vmVariant` and not `virtualisation.*` directly: since nixpkgs split `build-vm` out,
   # the QEMU options live in the nested configuration that produces the runner.
   virtualisation.vmVariant.virtualisation.qemu.options = [
-    "-device virtio-vga-gl"
-    "-display gtk,gl=on"
+    "-device virtio-vga"
+    "-display gtk"
   ];
 
   assertions = [
