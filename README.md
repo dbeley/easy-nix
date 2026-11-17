@@ -232,11 +232,12 @@ Stated here rather than discovered later:
 - The boot tests assert that the image reaches userspace, that the Wayland session
   reports itself from inside the session (`nix/session-report.sh`), and - separately -
   that an install boots. They do not assert that every application launches.
-- **The install test uses a light medium.** `checks.x86_64-linux.install-test` partitions
-  a disk and boots what it installed, on EFI only, from a medium that is smaller than the
-  released one and fetches the system's closure rather than carrying it. The released
-  image is boot-tested separately on both firmware paths. What stays uncovered is a real
-  physical disk, and the applications once the machine is up. See
+- **The install test installs what a user installs.** `checks.x86_64-linux.install-test`
+  boots the released configuration plus an unattended install onto an attached disk, on
+  EFI only, then boots the disk it has just written. What stays uncovered is a real
+  physical disk, the applications once the machine is up, and the network the install
+  still needs: `nixos-install` works in the target's empty store, so it substitutes from
+  `cache.nixos.org` rather than copying the system out of the medium. See
   [docs/install-test.md](docs/install-test.md).
 
 ## Building
@@ -251,9 +252,16 @@ nix build .#packages.x86_64-linux.size-budget-installer       # print the measur
 nix build .#packages.x86_64-linux.closure-manifest-appliance  # what an install produces
 
 nix eval --raw .#evalTargets.<host>          # evaluate one host, the honest way
-nix build --option extra-sandbox-paths /dev/kvm .#checks.x86_64-linux.install-test
-                                             # partition a disk, install, boot it
-just boot-test                               # boot the light image, BIOS + EFI
+
+just --list                                  # every recipe, grouped by verb
+just build-iso                               # build the image that ships (~40 min)
+just build-light                             # build the CI medium only (~minutes)
+just run-iso                                 # boot the shipped image in a window
+just run-light                               # boot the light medium on the serial console
+just run-install                             # boot the self-installing medium with a disk
+just test-light                              # assert userspace and the session, BIOS + EFI
+just test-iso                                # the same assertions on the image that ships
+just test-install                            # partition a disk, install, boot it
 just fmt                                     # treefmt: nixfmt, statix, deadnix, shfmt
 ```
 

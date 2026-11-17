@@ -61,7 +61,8 @@ nix fmt                 # treefmt: nixfmt, statix, deadnix, shfmt
 nix build .#checks.x86_64-linux.formatting -L        # the same wrapper `nix fmt` uses
 nix build .#checks.x86_64-linux.pre-commit-check -L  # shellcheck, EOF, whitespace
 just eval               # one host at a time, through `evalTargets`
-just boot-test          # boots the light image, BIOS and EFI; needs /dev/kvm
+just test-light          # boots the light image, BIOS and EFI; needs /dev/kvm
+just test-iso            # the same, on the image that ships; slow, needs disk
 ```
 
 `evalTargets` exists because "does this host evaluate" has four different answers. A host
