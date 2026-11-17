@@ -125,7 +125,7 @@ in
     enable = true;
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
-      xdg-desktop-portal-gnome
+      # gnome portal removed: labwc + gtk/wlr portals are what the session uses
     ];
     config.common.default = lib.mkDefault "gtk";
   };
