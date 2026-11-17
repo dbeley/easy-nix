@@ -12,7 +12,6 @@
     ../../modules/flatpak.nix
     ../../modules/apps/browsers.nix
     ../../modules/apps/office.nix
-    ../../modules/apps/steam.nix # no-op on non-x86 platforms
     ../../modules/apps/opencode.nix
   ];
 

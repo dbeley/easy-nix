@@ -15,7 +15,6 @@
     ../../modules/flatpak.nix
     ../../modules/apps/browsers.nix
     ../../modules/apps/office.nix
-    ../../modules/apps/steam.nix
     ../../modules/apps/opencode.nix
     ../../modules/installer
   ];

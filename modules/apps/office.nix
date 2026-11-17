@@ -1,15 +1,16 @@
 /*
-  Office suite: LibreOffice from nixpkgs rather than from Flathub.
+  Documents, at the size an appliance can justify.
 
-  A store package is reproducible, updates with the system, and does not need a
-  second package manager to be healthy. Flathub stays available for the applications
-  nixpkgs does not carry (see `modules/flatpak.nix`), which is the case Zoom and most
-  vendor desktop apps fall into.
+  LibreOffice was here and measured 2.7 GiB of closure for a suite nobody on a rescued
+  machine opens twice a week: it was the second largest thing in the image, after Steam.
+  What stays is what "open a document" actually means on such a machine - a PDF viewer
+  and the tools to read one in a terminal - and Flathub for the rest (see
+  `modules/flatpak.nix`), where a suite that is wanted can be installed per machine
+  instead of shipped to every one.
 */
 { pkgs, ... }:
 {
   environment.systemPackages = with pkgs; [
-    libreoffice
     # French spelling and hyphenation, so the suite is usable out of the box.
     hunspellDicts.fr-moderne
     hyphenDicts.fr-fr
