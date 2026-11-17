@@ -189,8 +189,8 @@ in
       assertion = !config.services.xserver.enable;
       message = ''
         easy-nix is Wayland-only: services.xserver.enable must stay false.
-        An application that requires an X server has to run through XWayland
-        (xwayland-satellite) instead of dragging X into the system.
+        An application that requires an X server runs through the XWayland that
+        programs.labwc provides, instead of dragging an X server into the system.
       '';
     }
   ];
