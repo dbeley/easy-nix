@@ -24,6 +24,7 @@ let
       hostName,
       system ? "x86_64-linux",
       modules,
+      home,
     }:
     lib.nixosSystem {
       inherit system;
@@ -36,7 +37,32 @@ let
           ;
         flakeSelf = self;
       };
-      modules = [ ../modules/base.nix ] ++ modules;
+      modules = [
+        ../modules/base.nix
+        inputs.home-manager.nixosModules.home-manager
+        {
+          # `home-manager` was an input nothing imported: every `hosts/<host>/home.nix`
+          # and all of `modules/desktop/niri.nix` were unreachable, and the desktop on the
+          # image was whatever niri generates for itself on first start - no keybindings
+          # of ours, no keyboard layout, no mako, no swayidle. Measured, not assumed: the
+          # session came up on a straight `niri-session`, wrote its own default config,
+          # and the marker in nix/session-report.sh (a user unit in niri.nix) never
+          # existed to run.
+          #
+          # `useGlobalPkgs` so that the user configuration is built with the same nixpkgs
+          # as the system - two evaluations of nixpkgs in one image is how a closure
+          # doubles. `useUserPackages` so that its packages land in the user's profile
+          # rather than in the system one: the units and the config files are then the
+          # user's, which is what makes `systemctl --user` and a per-session restart mean
+          # anything.
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            users.${user} = import home;
+          };
+        }
+      ]
+      ++ modules;
     };
 
   # Two instruments the release page publishes instead of a promise:
@@ -65,6 +91,7 @@ let
     easy-nix = mkHost {
       hostName = "easy-nix";
       modules = [ ./easy-nix ];
+      home = ./easy-nix/home.nix;
     };
 
     # The bootable installer: the same system, plus the install tool and a marker
@@ -72,6 +99,7 @@ let
     easy-nix-live = mkHost {
       hostName = "easy-nix-live";
       modules = [ ./easy-nix-live ];
+      home = ./easy-nix-live/home.nix;
     };
 
     # Deliberately light: no browsers, no office suite, no Steam. Exists so a boot
@@ -80,6 +108,7 @@ let
     easy-nix-live-test = mkHost {
       hostName = "easy-nix-live-test";
       modules = [ ./easy-nix-live-test ];
+      home = ./easy-nix-live-test/home.nix;
     };
 
     # Light for the same reason, plus the installer and an unattended install onto the
@@ -87,6 +116,7 @@ let
     easy-nix-live-install-test = mkHost {
       hostName = "easy-nix-live-install-test";
       modules = [ ./easy-nix-live-install-test ];
+      home = ./easy-nix-live-install-test/home.nix;
     };
 
     # ARM: an SD-card image per board, reduced application set. See README.
@@ -94,6 +124,7 @@ let
       hostName = "easy-nix-arm";
       system = "aarch64-linux";
       modules = [ ./easy-nix-arm ];
+      home = ./easy-nix-arm/home.nix;
     };
   };
 
