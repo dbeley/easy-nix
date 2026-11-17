@@ -6,20 +6,39 @@ on:
     # A documentation-only change cannot break an evaluation or a build, and the ISO build
     # is the most expensive thing here. The flake does embed its own source (the medium
     # carries the configuration it installs), so a doc change does alter the artifact -
-    # which is why the release workflow, on a tag, always builds and boot-tests from
-    # scratch rather than trusting the last green run.
+    # which is why the release workflow publishes the artifacts of the run that built a
+    # commit, and never builds the same tree a second time.
     paths-ignore:
       - "**.md"
   pull_request:
+    # The same filter as `push`, and it has to be written twice: a `push` filter does not
+    # cover pull requests, and a README fix was paying for lint, four evaluations and a
+    # boot test. Note what a filtered-out pull request reports: no check at all, rather
+    # than a green one, so `ci` must not be a required check in branch protection while
+    # this is in place.
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
 
+# Pinned, not `-latest`: the ISO job frees disk space by removing paths that are specific
+# to a runner image, and `ubuntu-latest` moves under it (it migrated to Ubuntu 26 in
+# October 2026). A job that silently freed nothing would then fail on a full disk forty
+# minutes into a build.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  # Build provenance, filed by the job that produced the file rather than by a later job
+  # that downloaded a copy: the attestation names this run's build, which is the claim
+  # worth making.
+  id-token: write
+  attestations: write
+
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
@@ -29,7 +48,7 @@ jobs:
         run: nix build .#checks.x86_64-linux.pre-commit-check -L
 
   eval:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +74,7 @@ jobs:
           nix eval --raw .#packages.x86_64-linux.closure-manifest-appliance.drvPath
 
   boot-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
@@ -85,7 +104,7 @@ jobs:
     # Not on pull requests: a full ISO build is the most expensive thing here, and it
     # is the artifact of a merge to main or of a tag, not of an open proposal.
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
@@ -103,9 +122,9 @@ jobs:
             /usr/local/share/boost
           sudo docker image prune -af || true
           df -h /
-          # The paths above are the ones the current runner image uses, and that image
-          # changes (`ubuntu-latest` migrates to Ubuntu 26 from October 2026). Check the
-          # result here, where the message can say what is wrong, rather than letting the
+          # The paths above are the ones this runner image uses. The runner is pinned in
+          # the `runs-on` above precisely so they stay the right ones; check the result
+          # here anyway, where the message can say what is wrong, rather than letting the
           # build fail minutes later on a full disk.
           avail_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
           case "$avail_gb" in
@@ -121,23 +140,31 @@ jobs:
           fi
       - name: Build the installer ISO
         run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
-      - name: Size and checksum
-        run: |
-          ls -lh result/iso/*.iso
-          # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
-          # user downloaded into, where `result/iso/...` does not exist.
-          (cd result/iso && sha256sum *.iso) > SHA256SUMS
-          cat SHA256SUMS
       - name: Size budget and closure manifest
         run: |
           # Nearly free here: the image and the closure are already built, so these only
           # add their own derivations.
           #
-          # --no-link, and it is not cosmetic: either build repoints ./result, and the
-          # artifact upload below reads result/iso/*.iso. Without it the job goes green
-          # while uploading a 231-byte archive with no image in it.
+          # --no-link for the budget, and it is not cosmetic: that build repoints ./result,
+          # and the steps below read result/iso/*.iso. Without it the job goes green while
+          # uploading a 231-byte archive with no image in it.
+          #
+          # The manifest keeps an out-link of its own (`result-manifest`), because the
+          # release publishes these files and the release job must not rebuild them: they
+          # were computed from the very system this run built and tested.
           nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
-          nix build --no-link -L .#packages.x86_64-linux.closure-manifest-appliance
+          nix build -L --out-link result-manifest .#packages.x86_64-linux.closure-manifest-appliance
+      - name: Size and checksum
+        run: |
+          ls -lh ./result/iso/*.iso ./result-manifest/
+          # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
+          # user downloaded into, where `result/iso/...` does not exist.
+          #
+          # The manifest is covered too: this is the one document that lists everything
+          # the release publishes, and it is the one that gets signed.
+          (cd result/iso && sha256sum ./*.iso) > SHA256SUMS
+          (cd result-manifest && sha256sum ./closure-*.json ./closure-sri-*.tsv) >> SHA256SUMS
+          cat SHA256SUMS
       - name: Make /dev/kvm usable
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -151,8 +178,8 @@ jobs:
           # against the image that actually ships, so a release step is never the first
           # time it runs. Same runner as the build, so nothing is rebuilt.
           # --no-link: without it, `nix build` repoints ./result at the check's own output,
-          # and the steps that follow (checksums, notes, artifact upload) then read a
-          # ./result that no longer holds the ISO.
+          # and the steps that follow (checksums, artifact upload) then read a ./result
+          # that no longer holds the ISO.
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
           nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
       - name: Install, then boot what was installed
@@ -177,11 +204,23 @@ jobs:
           # The boot tests need no network, so they stay sandboxed.
           nix build --no-link --option extra-sandbox-paths /dev/kvm --option sandbox false \
             -L .#checks.x86_64-linux.install-test
+      # The provenance is filed here, by the job that built the file, and not by the
+      # release job that later downloads a copy: an attestation is about a digest, so it
+      # verifies any copy - but only if the thing that attests it watched it being built.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: result/iso/*.iso
+      # Everything the release publishes, from the run that tested it. 90 days is the
+      # maximum, and the point of the artifact: a tag pushed weeks after the merge still
+      # finds the bytes this run built and boot-tested, instead of building the same tree
+      # again and publishing bytes no test ever saw.
       - uses: actions/upload-artifact@v7
         with:
-          name: easy-nix-iso
+          name: easy-nix-release
           path: |
             result/iso/*.iso
+            result-manifest/closure-*.json
+            result-manifest/closure-sri-*.tsv
             SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90

@@ -1,105 +1,204 @@
 name: release
 
+# Publishes a tag from the artifacts of the CI run that built and tested that commit.
+#
+# What this workflow used to do: rebuild the whole image on the tag, boot-test its own
+# build, and publish that. Two problems, one of them serious:
+#
+#   - forty more minutes of the most expensive job in the project, on a tree whose closure
+#     was already in the cache;
+#   - the published bytes were the bytes of a build nothing had ever *installed from*. The
+#     install test, the size budget and the release boot tests had all run on the main
+#     build, and then a second, untested build was shipped.
+#
+# Both have the same fix, and it is the one depannix uses: a release publishes, it does not
+# build. The artifacts come from `ci.yml`, which built the ISO, boot-tested it on both
+# firmware paths, installed it onto a disk and booted what it installed.
+#
+# What stays a human decision is *when*: depannix cuts `vYYYY.MM` itself from the version
+# in `flake.nix`; easy-nix has no version attribute and releases in semver, rarely and on
+# purpose. So the tag is pushed by a person, and what the person gets is a publication of
+# what CI already proved.
+#
+# The consequence, stated because it will be met: a commit that `ci.yml` never built green
+# cannot be released. A documentation-only commit is skipped by CI's `paths-ignore`, so it
+# has no artifacts either - tag the merge that came with a build, not the README fix. The
+# artifacts are kept for 90 days; after that, a retag is a rebuild.
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (v0.1.0, ...)"
+        required: true
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: write # create the release
+  actions: read # download the artifact of the run that built this commit
+  id-token: write # verify the attestation before publishing what it names
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      # One name for the version, whether it came from a tag push or from the manual
+      # trigger. A `workflow_dispatch` run has no tag in `github.ref_name`, and every step
+      # below that asked for one would otherwise silently ask for "main".
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
-      - uses: cachix/install-nix-action@v31
-      - name: Free disk space
+        with:
+          # The tagged commit, available by name. Walking back from `$GITHUB_REF` is how the
+          # SHA is resolved below, so the tag has to be in the checkout.
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Refuse to publish the same version twice
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # See ci.yml. The guard at the end is the point of this step: it fails here,
-          # with a message that says what is wrong, instead of several minutes into the
-          # build with "No space left on device".
-          sudo rm -rf \
-            /usr/local/lib/android \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /opt/hostedtoolcache \
-            /usr/local/share/boost
-          sudo docker image prune -af || true
-          df -h /
-          avail_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          case "$avail_gb" in
-            '' | *[!0-9]*)
-              echo "::error::could not read free space from df" >&2
-              exit 1
-              ;;
-          esac
-          echo "free on /: ${avail_gb}G"
-          if [ "$avail_gb" -lt 25 ]; then
-            echo "::error::only ${avail_gb}G free on /; the ISO build needs about 25G" >&2
+          # One release per version. A re-pushed tag is normally a mistake, and a release
+          # that already exists should be edited by a person rather than replaced by a
+          # workflow that cannot see what it overwrites.
+          #
+          # The other half of the lesson (depannix, 2026.11): "tagged" is not "released".
+          # A tag whose publish failed must be publishable later, which is what re-running
+          # this workflow does - it looks for a run, not for a tag.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName >/dev/null 2>&1; then
+            echo "::notice::$TAG already has a release; nothing to publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Find the run that built this commit
+        id: run
+        if: steps.gate.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="$(git rev-list -n1 "$TAG")"
+          echo "tagged commit: $sha"
+          # `--workflow ci.yml` rather than a check name: a green *run* is what carries the
+          # artifacts, and a check name does not say where the ISO is.
+          id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$sha" --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')"
+          if [ -z "$id" ]; then
+            echo "::error::no successful ci.yml run for $sha." >&2
+            echo "::error::This workflow publishes what CI built and tested; it does not build." >&2
+            echo "::error::Push the commit to main, let CI finish, then push the tag." >&2
             exit 1
           fi
-      - name: Make /dev/kvm usable
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "using the artifacts of run $id" \
+            "($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id)"
+
+      - name: Download them
+        if: steps.gate.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.id }}
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -w /dev/kvm
-      - name: Build the ISO
-        run: nix build .#packages.x86_64-linux.iso -L --max-jobs 4
-      - name: Boot the image that is about to be published
+          # `upload-artifact` stores the workspace-relative paths it was given, so the files
+          # arrive under dist/result/... rather than at the root. Verified by listing the
+          # download here rather than by reading the action's documentation, and the steps
+          # below find their files with `find` rather than hard-coding that layout.
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name easy-nix-release --dir dist
+          find dist -type f | sort
+
+      - name: Lay out what the release publishes
+        if: steps.gate.outputs.exists == 'false'
         run: |
-          # The light image is boot-tested on every push; this is the same assertion
-          # against the artifact that ships, applications and all. A step that has only
-          # ever run on a tag is untested code.
-          # --no-link: without it, `nix build` repoints ./result at the check's own output,
-          # and the steps that follow (checksums, notes, release assets) then read a
-          # ./result that no longer holds the ISO.
-          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
-          nix build --no-link --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
-      - name: Size budget and closure manifest
+          set -euo pipefail
+          mkdir -p publish/assembled
+          iso="$(find dist -name '*.iso' | head -1)"
+          [ -n "$iso" ] || {
+            echo "::error::the artifact holds no ISO" >&2
+            exit 1
+          }
+          cp "$iso" publish/
+          cp "$(find dist -name 'SHA256SUMS' | head -1)" publish/
+          while IFS= read -r f; do
+            cp "$f" publish/
+          done < <(find dist \( -name 'closure-*.json' -o -name 'closure-sri-*.tsv' \))
+          ls -lh publish
+
+      - name: Split the image for GitHub's asset limit
+        if: steps.gate.outputs.exists == 'false'
         run: |
-          # The budget fails the release if the image drifted past its measured ceiling
-          # (docs/budget.md). The manifest is what the release page publishes instead of a
-          # promise, and it describes the system an install produces - not the medium:
-          # rooted at the image it would come out with a single entry, the ISO file,
-          # because a compressed squashfs hides the store paths inside it from a
-          # reference scan.
+          # GitHub refuses any release asset of 2 GiB or more ("size must be less than
+          # 2147483648"). The compare is on the object actually uploaded, so a part that
+          # lands one byte over is refused *after* the whole upload has been sent, which is
+          # why the split is 1900 MiB and not a rounding of the limit.
           #
-          # Both keep ./result pointing at the ISO: the budget through --no-link, the
-          # manifest through an out-link that .gitignore already covers.
-          nix build --no-link -L .#packages.x86_64-linux.size-budget-installer
-          nix build -L --out-link result-manifest .#packages.x86_64-linux.closure-manifest-appliance
-      - name: Checksums
+          # Splitting only what needs it keeps the release page readable: the day the image
+          # fits, it ships as one file and nothing here has to change. The assembled image
+          # is moved out of `publish/` when it is split, because it is the one file GitHub
+          # will refuse; it stays in `publish/assembled/` for the two steps that have to
+          # name it (the attestation, the notes).
+          cd publish
+          shopt -s nullglob
+          for iso in *.iso; do
+            size=$(stat -c%s "$iso")
+            if [ "$size" -lt 2147483648 ]; then
+              echo "$iso: $size bytes, under the limit, shipping as it is"
+              continue
+            fi
+            split -b 1900M -d -a 2 "$iso" "$iso.part-"
+            echo "$iso: $size bytes, split into $(find . -maxdepth 1 -name "$iso.part-*" | wc -l) parts"
+            mv "$iso" assembled/
+          done
+          ls -lh . assembled
+
+      - name: Checksums of the parts
+        if: steps.gate.outputs.exists == 'false'
         run: |
-          # Bare filenames, so that `sha256sum -c SHA256SUMS` works in the directory a
-          # user downloaded into, where `result/iso/...` does not exist.
+          # Appended, not regenerated: `SHA256SUMS` came out of the build job, where the
+          # image and its manifests were hashed, and rebuilding it here would mean hashing
+          # files this workflow did not test.
           #
-          # The manifest is covered too: this file is the one document that lists
-          # everything the release publishes, and it is the one that gets signed.
-          (cd result/iso && sha256sum *.iso) > SHA256SUMS
-          (cd result-manifest && sha256sum closure-*.json closure-sri-*.tsv) >> SHA256SUMS
+          # The parts get their own lines so that a download can be checked *before* it is
+          # reassembled as well as after: `cat part-*` must land on the image's own digest.
+          cd publish
+          shopt -s nullglob
+          parts=(*.part-*)
+          if [ "${#parts[@]}" -gt 0 ]; then
+            sha256sum "${parts[@]}" >> SHA256SUMS
+          fi
           cat SHA256SUMS
+
       - name: Detect the signing key
         id: sig
+        if: steps.gate.outputs.exists == 'false'
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
           # Signing is optional, and its absence is announced rather than fatal: a release
-          # whose artifacts are built, boot-tested and attested should not be thrown away
-          # because a key is missing. The notes below say which of the two happened, so the
-          # page never claims a signature the download does not carry.
+          # built, boot-tested and attested by CI should not be thrown away because a key
+          # is missing. The notes below say which of the two happened, so the page never
+          # claims a signature the download does not carry.
           if [ -n "$MINISIGN_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::warning::MINISIGN_SECRET_KEY is absent - the release will not be signed"
           fi
-      - name: Sign the checksums
+
+      # This job runs no `nix build`, so Nix is here only for minisign. It has to come
+      # before the step that calls `nix run`, which is not where it used to be.
+      - uses: cachix/install-nix-action@v31
         if: steps.sig.outputs.enabled == 'true'
+
+      - name: Sign the checksums
+        if: >-
+          steps.gate.outputs.exists == 'false'
+          && steps.sig.outputs.enabled == 'true'
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
@@ -108,71 +207,88 @@ jobs:
           # be UNENCRYPTED (`minisign -G -W`), the only non-interactive mode upstream
           # supports. The public key is committed as easy-nix.pub, so a signature is
           # checkable without GitHub being reachable or trusted.
+          cd publish
           mkdir -p ~/.minisign
           printf '%s\n' "$MINISIGN_KEY" > ~/.minisign/easy-nix.key
           nix run nixpkgs#minisign -- -S -s ~/.minisign/easy-nix.key -m SHA256SUMS
           rm -f ~/.minisign/easy-nix.key
           cat SHA256SUMS.minisig
-          # Verify the signature against the key the repository publishes, not against
-          # the one that just signed: they are two independent files, and the reader
-          # only has the first. Without this, a secret whose public half was never
-          # committed produces a release whose documented check fails for everyone.
-          nix run nixpkgs#minisign -- -V -p easy-nix.pub -m SHA256SUMS
+          # Verified against the key the repository publishes, not against the one that just
+          # signed: they are two independent files, and the reader only has the first.
+          # Without this, a secret whose public half was never committed produces a release
+          # whose documented check fails for everyone.
+          nix run nixpkgs#minisign -- -V -p ../easy-nix.pub -m SHA256SUMS
           echo "signed with the key committed as easy-nix.pub"
-      - name: Split the image for GitHub's asset limit
-        run: |
-          # GitHub refuses any release asset of 2 GiB or more, and this image is about
-          # 4 GiB because it carries the applications, which is what lets an install work
-          # without the network. Parts of 1900 MiB stay under the limit whatever the image
-          # grows to, and the release notes say how to put them back together.
-          #
-          # The parts go into the workspace, not beside the image: `result/iso` is a
-          # read-only Nix store path, so writing there fails with "Permission denied"
-          # after the build has already run. The assembled image stays where it is,
-          # because the provenance below is filed against that file, not against the parts.
-          ISO=$(basename "$(ls result/iso/*.iso)")
-          mkdir -p release
-          split -b 1900M --numeric-suffixes=1 --suffix-length=2 "result/iso/$ISO" "release/$ISO.part-"
-          ls -lh release
-      - name: Write the release notes
+
+      - name: Verify the provenance of what is about to be published
+        if: steps.gate.outputs.exists == 'false'
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The attestation was filed by the build job. Checking it here, against the file
+          # this workflow is holding, is the one thing that connects the download to the
+          # build: everything else in this job trusts a network round-trip, and this is how
+          # we know the round-trip returned what was attested.
+          #
+          # A digest-based attestation verifies copies, which is exactly why checking the
+          # copy is worth a step rather than redundant.
+          iso="$(find publish -name '*.iso' | head -1)"
+          gh attestation verify "$iso" --repo "$GITHUB_REPOSITORY"
+
+      - name: Write the release notes
+        if: steps.gate.outputs.exists == 'false'
+        env:
           REPO: ${{ github.repository }}
           SIGNED: ${{ steps.sig.outputs.enabled }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ steps.run.outputs.id }}
         run: |
-          ISO=$(basename "$(ls result/iso/*.iso)")
+          cd publish
+          iso="$(find . -name '*.iso' -printf '%f\n' | head -1)"
           {
             echo "## easy-nix $TAG"
             echo
-            echo "x86_64 installer. GitHub refuses a single release asset of 2 GiB or more and"
-            echo "this image is about 4 GiB, so it ships in parts. Reassemble it, and verify"
-            echo "the result before writing anything to a disk:"
+            echo "x86_64 installer. These are the bytes the CI run behind this release built,"
+            echo "boot-tested on BIOS and EFI, and installed from onto a disk in a virtual"
+            echo "machine: [$RUN_URL]($RUN_URL). Nothing is rebuilt here."
+            echo
+            echo "GitHub refuses a single release asset of 2 GiB or more and this image is"
+            echo "about 4 GiB, so it ships in parts. Reassemble it, and verify the result"
+            echo "before writing anything to a disk:"
             echo
             echo '```sh'
-            echo "cat ${ISO}.part-* > $ISO"
+            # The escaping and the single quotes below are deliberate: these lines are
+            # *text for the release page*, not commands this job runs. SC2016 is silenced
+            # for the rest of the script for that reason - the whole point is that the
+            # reader's shell expands them, and this one must not.
+            # shellcheck disable=SC2016
+            echo "iso=\$(awk '\$2 ~ /\.iso\$/ {print \$2}' SHA256SUMS)"
+            # shellcheck disable=SC2016
+            echo 'cat easy-nix-*.iso.part-* > "$iso"'
             echo "sha256sum -c SHA256SUMS"
             echo '```'
             echo
-            echo "Then write **$ISO** to a USB stick and boot it. It comes up as a live"
-            echo "system, so you can check the screen, the keyboard and the wifi before any"
-            echo "disk is touched, and it carries the applications, so the install itself does"
-            echo "not need the network. Launch **Install easy-nix** from the desktop, or run"
-            echo "\`sudo easy-nix-install\` from a terminal."
+            echo "Then write **$iso** to a USB stick with \`dd\` and boot it in UEFI mode with"
+            echo "Secure Boot off. It comes up as a live system, so you can check the screen,"
+            echo "the keyboard and the wifi before any disk is touched. Launch **Install"
+            echo "easy-nix** from the desktop launcher, or run \`sudo easy-nix-install\` in a"
+            echo "terminal. The install needs the network: the medium carries the"
+            echo "configuration, but the target's store is assembled from the binary cache."
             echo
             echo "| part | size | sha256 |"
             echo "| --- | --- | --- |"
-            for f in release/*.part-*; do
-              printf '| %s | %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -d' ' -f1)"
+            for f in *.part-*; do
+              [ -e "$f" ] || continue
+              printf '| %s | %s | %s |\n' "$f" "$(du -h "$f" | cut -f1)" "$(sha256sum "$f" | cut -d' ' -f1)"
             done
             echo
-            echo "Assembled: $(du -h "result/iso/$ISO" | cut -f1), sha256"
-            echo "\`$(sha256sum "result/iso/$ISO" | cut -d' ' -f1)\` - which is the line \`SHA256SUMS\`"
-            echo "records, and the digest the provenance below is filed against."
+            echo "Assembled: $(du -h "$(find . -name '*.iso' | head -1)" | cut -f1), sha256"
+            echo "\`$(sha256sum "$(find . -name '*.iso' | head -1)" | cut -d' ' -f1)\` - which is"
+            echo "the line \`SHA256SUMS\` records, and the digest the provenance is filed against."
             echo
             # Optional, and the page must not claim the opposite of what it ships: a
             # hard-coded "signed" section would quietly become a lie the day the key
             # disappears from the repository.
-            if [ "${SIGNED}" = "true" ]; then
+            if [ "$SIGNED" = "true" ]; then
               echo "### Signed"
               echo
               echo "\`SHA256SUMS\` is signed with the project's minisign key:"
@@ -186,11 +302,11 @@ jobs:
             else
               echo "### Not signed"
               echo
-              echo "No minisign key is configured yet, so \`SHA256SUMS\` ships unsigned. The build"
+              echo "No minisign key is configured, so \`SHA256SUMS\` ships unsigned. The build"
               echo "provenance attestation is the available alternative:"
               echo
               echo '```sh'
-              echo "gh attestation verify $ISO --repo $REPO"
+              echo "gh attestation verify $iso --repo $REPO"
               echo '```'
             fi
             echo
@@ -211,27 +327,33 @@ jobs:
             echo "### What this release does not do"
             echo
             echo "- no disk encryption and no dual boot: installing erases the target disk"
+            echo "- **Secure Boot must be off**: nothing signs the boot chain, only the checksums"
+            echo "- write it to a whole device with dd; **Ventoy is not the tested path** - it"
+            echo "  cannot boot this image in GRUB2 mode, and reads it through a loop device in"
+            echo "  normal mode (see the README)"
             echo "- no aarch64 ISO; ARM is an SD-card image, see the README"
-            echo "- the boot test asserts the image reaches userspace, not that every"
-            echo "  application in it launches"
-            echo "- no automated install test: \`easy-nix-install\` has never partitioned a disk"
-            echo "  in CI, see docs/install-test.md"
+            echo "- the boot test asserts the image reaches userspace, that the Wayland session"
+            echo "  reports itself from inside, and that an install boots - not that every"
+            echo "  application launches"
           } >RELEASE_NOTES.md
           cat RELEASE_NOTES.md
-      - uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: result/iso/*.iso
+
       - uses: softprops/action-gh-release@v3
+        if: steps.gate.outputs.exists == 'false'
         with:
-          body_path: RELEASE_NOTES.md
-          # The parts, never the assembled image: it is over the 2 GiB asset limit, and
-          # one oversized glob here is what makes this step fail after a 40-minute build.
+          tag_name: ${{ env.TAG }}
+          body_path: publish/RELEASE_NOTES.md
+          # The parts, and the assembled image only when it was not split: it is over the
+          # 2 GiB asset limit, and one oversized glob here is what makes this step fail
+          # after a forty-minute upload. When it was split it lives in
+          # `publish/assembled/`, which nothing below matches.
           #
           # `SHA256SUMS*` rather than naming the signature: it exists only when the signing
           # key is configured, and a named file that is absent fails the whole step.
           files: |
-            release/*.part-*
-            SHA256SUMS*
-            result-manifest/closure-*.json
-            result-manifest/closure-sri-*.tsv
+            publish/*.part-*
+            publish/*.iso
+            publish/SHA256SUMS*
+            publish/closure-*.json
+            publish/closure-sri-*.tsv
           fail_on_unmatched_files: true
