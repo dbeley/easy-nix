@@ -76,21 +76,25 @@ run-light:
 # Boot the installer ISO in a window, applications included (needs a display and GL)
 run-iso:
     #!/usr/bin/env bash
-    # `-device virtio-vga-gl` with `gl=on`, never QEMU's default VGA.
+    # `-device virtio-vga`, 2D, and deliberately not `virtio-vga-gl`.
     #
-    # The default `-vga std` is a bochs card that mesa has no driver for, and niri -
-    # the compositor before labwc - refused software renderers outright: it started,
-    # could not allocate a buffer on the device, logged `no allocator available for
-    # device` and ran *headless*, leaving the autologin line frozen on the console.
-    # virgl gives the guest a virtio_gpu renderer the compositor accepts, and host
-    # llvmpipe is enough: what the guest needs is a device it can allocate from, not
-    # speed.
+    # Two different compositors wanted two different things here. niri, the predecessor,
+    # refused software renderers outright: it started, could not allocate a buffer on
+    # QEMU's default bochs VGA, logged `no allocator available for device` and ran
+    # headless, so virgl was the only way to get a desktop at all. labwc is on wlroots
+    # and falls back to pixman, which is why the GL requirement is gone - and why the
+    # pointer had to change with it: on the GL path wlroots hands the cursor to virgl's
+    # hardware-cursor plane, and a virgl guest draws it inverted. On the 2D device the
+    # cursor is composited in software and comes out right.
+    #
+    # `virtio-tablet` stays: absolute pointing, so the guest pointer does not drift away
+    # from the host pointer.
     set -eo pipefail
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso 2>/dev/null | tail -1)
     qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
     ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
     exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot \
-      -device virtio-vga-gl -device virtio-tablet -display gtk,gl=on -serial mon:stdio \
+      -device virtio-vga -device virtio-tablet -display gtk -serial mon:stdio \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
       -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host
