@@ -133,6 +133,16 @@ in
   # at all. Measured on the light image before the move: same `outputs=0`.
   hardware.graphics.enable = true;
 
+  # What a graphical desktop pulls in by default, and this image does not want.
+  #
+  # `services/misc/graphical-desktop.nix` sets `services.speechd.enable` to
+  # `mkDefault true`, and speech-dispatcher carries mbrola plus the mbrola voice set:
+  # 644 MiB of voices and a second speech engine, for a screen reader this image does
+  # not ship. Attributed with `nix why-depends --all` on the appliance closure, where
+  # the path ran system-path -> speech-dispatcher -> mbrola -> mbrola-voices. Removing
+  # the GNOME portal did not touch it, which is what that measurement was for.
+  services.speechd.enable = false;
+
   # The compositor falls back to a theme called `default` when nothing says otherwise,
   # and this system installs no such theme: `error loading xcursor default@24: no
   # default icon`, which is the oversized pointer. Name one that exists. Same for the
