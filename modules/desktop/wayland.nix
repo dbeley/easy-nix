@@ -23,8 +23,19 @@ in
   services.getty.autologinUser = lib.mkIf cfg.autologin user;
 
   environment.loginShellInit = lib.mkIf cfg.autologin ''
-    # Only the first console, and only outside an existing session.
-    if [ -z "''${WAYLAND_DISPLAY:-}" ] && [ "$(tty)" = "/dev/tty1" ]; then
+    # Only the first console, and only once.
+    #
+    # The second condition is not belt-and-braces. `niri-session` re-executes itself
+    # through a *login* shell to pick up a clean login environment, and that login shell
+    # sources this file again. Guarding on WAYLAND_DISPLAY alone - which is unset until
+    # niri is already running - recursed instead: measured on the light image, the shell
+    # re-execed once a second, `niri.service` never started, and the screen stayed on a
+    # shell that drew nothing. An exported variable is the only thing that survives that
+    # re-exec, since it is inherited across it.
+    if [ -z "''${WAYLAND_DISPLAY:-}" ] &&
+      [ -z "''${EASY_NIX_SESSION_LAUNCHED:-}" ] &&
+      [ "$(tty)" = "/dev/tty1" ]; then
+      export EASY_NIX_SESSION_LAUNCHED=1
       exec ${lib.getExe' pkgs.niri "niri-session"}
     fi
   '';
