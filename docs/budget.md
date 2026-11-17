@@ -43,14 +43,14 @@ the measurement, as the rule at the bottom of this file says.
 
 | Flavour | What it is | Measured | Budget | Margin |
 |---|---|---|---|---|
-| `installer` | the bootable medium, applications included | 2 623 733 760 B (2502 MiB) | 2750 MiB | 248 MiB (9.0%) |
-| `test` | the deliberately light live image used by the boot test | 2 205 941 760 B (2103 MiB) | 2300 MiB | 197 MiB (8.6%) |
+| `installer` | the bootable medium, applications included | 2 571 075 584 B (2451 MiB) | 2750 MiB | 299 MiB (10.9%) |
+| `test` | the deliberately light live image used by the boot test | 2 208 104 448 B (2105 MiB) | 2300 MiB | 195 MiB (8.5%) |
 
 Both images got smaller, and neither shrank for a cosmetic reason.
 
-The installer image lost Steam, protonup-qt and LibreOffice, which is 1346 MiB of ISO
-against the 3848 MiB measured at v0.1.0. It is still above 2 GiB, so it still ships in
-parts.
+The installer image lost Steam, protonup-qt and LibreOffice, and opencode2 gave way
+to `pi`; together that is 1397 MiB of ISO against the 3848 MiB measured at v0.1.0. It is
+still above 2 GiB, so it still ships in parts.
 
 Both images lost `speech-dispatcher`, which carries mbrola and the mbrola voice set:
 735 MiB of the appliance closure, and 542 MiB of the light ISO. It is worth naming how
