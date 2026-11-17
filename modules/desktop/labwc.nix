@@ -148,10 +148,77 @@ let
           <action name="Execute" command="reboot"/>
         </keybind>
       </keyboard>
+      <!-- labwc has no compiled-in mouse bindings: what is not here does nothing.
+           Without the frame, titlebar and button contexts below, clicking a window's
+           titlebar or its minimise/maximise/close buttons was a no-op - the compositor
+           had no action to run. Clicks on client surfaces and on the root menu still
+           worked, which is what made it look like a mouse problem. -->
       <mouse>
         <context name="Root">
           <mousebind button="Right" action="Press">
             <action name="ShowMenu" menu="root-menu"/>
+          </mousebind>
+        </context>
+        <context name="Frame">
+          <mousebind button="W-Left" action="Drag">
+            <action name="Move"/>
+          </mousebind>
+          <mousebind button="W-Right" action="Drag">
+            <action name="Resize"/>
+          </mousebind>
+        </context>
+        <context name="Border">
+          <mousebind button="Left" action="Press">
+            <action name="Focus"/>
+            <action name="Raise"/>
+          </mousebind>
+          <mousebind button="Left" action="Drag">
+            <action name="Resize"/>
+          </mousebind>
+        </context>
+        <context name="TitleBar">
+          <mousebind button="Left" action="Press">
+            <action name="Focus"/>
+            <action name="Raise"/>
+          </mousebind>
+          <mousebind button="Left" action="Drag">
+            <action name="Move"/>
+          </mousebind>
+          <mousebind button="Left" action="DoubleClick">
+            <action name="ToggleMaximize"/>
+          </mousebind>
+        </context>
+        <context name="Title">
+          <mousebind button="Left" action="Drag">
+            <action name="Move"/>
+          </mousebind>
+          <mousebind button="Left" action="DoubleClick">
+            <action name="ToggleMaximize"/>
+          </mousebind>
+        </context>
+        <context name="Client">
+          <mousebind button="Left" action="Press">
+            <action name="Focus"/>
+            <action name="Raise"/>
+          </mousebind>
+          <mousebind button="Right" action="Press">
+            <action name="Focus"/>
+            <action name="Raise"/>
+          </mousebind>
+        </context>
+        <context name="Iconify">
+          <mousebind button="Left" action="Click">
+            <action name="Iconify"/>
+          </mousebind>
+        </context>
+        <context name="Maximize">
+          <mousebind button="Left" action="Click">
+            <action name="ToggleMaximize"/>
+          </mousebind>
+        </context>
+        <context name="Close">
+          <mousebind button="Left" action="Click">
+            <action name="Close"/>
           </mousebind>
         </context>
       </mouse>
