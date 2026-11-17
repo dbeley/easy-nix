@@ -12,6 +12,11 @@
 # userspace would mean the marker is being written by something other than the session,
 # and a separate run would cost another boot to learn less.
 #
+# RENDER_NODE, when set to a DRM render node the sandbox can see, gives the guest a GPU
+# the compositor actually renders on, and turns the session assertion into "the session
+# has an output". Without one - a CI runner - the guest has nothing to draw on, the
+# session comes up headless, and the harness says so rather than counting that as a pass.
+#
 # The exit status is the whole point: `nix build` on the check that drives this either
 # succeeds, meaning the image booted, or fails with the serial log attached.
 set -uo pipefail
@@ -30,7 +35,28 @@ TIMEOUT="${TIMEOUT:-900}"
   exit 2
 }
 
-args=(-machine "$MACHINE" -m "$MEM" -smp "$CPUS" -nographic -no-reboot -cdrom "$ISO")
+args=(-machine "$MACHINE" -m "$MEM" -smp "$CPUS" -no-reboot -cdrom "$ISO")
+
+# The guest's GPU, when this environment can give it one.
+#
+# QEMU's default VGA is a bochs card that mesa has no driver for, and niri skips
+# software EGL renderers: the compositor then comes up *headless*. It answers on its
+# socket, so a test that only greps for the session marker passes while nothing is
+# drawn - which is exactly how a desktop that never appeared shipped.
+#
+# `-display egl-headless` needs a DRM render node on the *host*, so this is conditional:
+# a GPU-less CI runner has none. When RENDER_NODE is set, the guest gets virgl (a
+# virtio_gpu niri will render on) and the marker below has to report an output; when it
+# is not, the session marker is the only claim the test makes, and the harness says so
+# out loud instead of implying more.
+if [ -n "${RENDER_NODE:-}" ]; then
+  args+=(-device virtio-vga-gl -display egl-headless)
+  # `-nographic` used to provide the serial console as a side effect; with a display
+  # frontend it has to be asked for, and it is the only channel the test reads.
+  args+=(-serial mon:stdio)
+else
+  args+=(-nographic)
+fi
 
 # KVM is the difference between seconds and tens of minutes. Without it QEMU falls back
 # to software emulation, which is slow enough that the boot test times out rather than
@@ -99,6 +125,22 @@ kill -KILL "$qpid" 2>/dev/null
 wait "$qpid" 2>/dev/null
 
 if [ "$found" = 1 ] && { [ -z "$SECOND_MARKER" ] || [ "$second" = 1 ]; }; then
+  # A session marker with `outputs=0` is a compositor with nowhere to draw. Where the
+  # sandbox could hand it a GPU, that is a failure, not a detail: the desktop is the
+  # product. Where it could not (no render node on the host), saying "OK" about a
+  # headless session would be the same false green this check exists to prevent, so it
+  # is reported as a limit instead of as a pass.
+  if [ -n "$SECOND_MARKER" ] && [ -n "${RENDER_NODE:-}" ] &&
+    ! grep -Eq -- "$SECOND_MARKER.*outputs=[1-9]" "$log"; then
+    echo "FAILURE: '$SECOND_MARKER' seen but the session reports no output (mode $MODE)" >&2
+    echo "         the compositor answers and draws nothing; see the marker line below." >&2
+    grep -- "$SECOND_MARKER" "$log" | tail -3 >&2
+    exit 1
+  fi
+  if [ -n "$SECOND_MARKER" ] && [ -z "${RENDER_NODE:-}" ]; then
+    echo "NOTE: session asserted without a GPU - no render node here, so niri runs" >&2
+    echo "      headless and 'draws something' is NOT what this run proved." >&2
+  fi
   echo "OK: marker seen (mode $MODE)"
   if [ -n "$SECOND_MARKER" ]; then
     echo "OK: second marker seen (mode $MODE)"

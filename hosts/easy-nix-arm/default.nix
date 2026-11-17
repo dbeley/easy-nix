@@ -47,7 +47,6 @@
 
   easyNix = {
     enable = true;
-    user.initialPassword = "easy-nix";
   };
 
   # No swap on flash storage beyond ZRAM: an SD card is the slowest swap device there

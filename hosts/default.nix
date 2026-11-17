@@ -155,7 +155,7 @@ let
       size-budget-test =
         mkSizeBudget "x86_64-linux" "test"
           nixosConfigurations.easy-nix-live-test.config.system.build.images.iso
-          2048;
+          2200;
     };
     aarch64-linux = {
       sd-card = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;

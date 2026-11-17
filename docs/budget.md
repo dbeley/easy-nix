@@ -14,6 +14,21 @@ A package list is a ranking; it is not a budget.
 | `installer` | the bootable medium, applications included | 4 035 411 968 B (3848 MiB) | 4100 MiB | 251 MiB (6.5%) |
 | `test` | the deliberately light live image used by the boot test | 1 979 711 488 B (1888 MiB) | 2048 MiB | 160 MiB (8.5%) |
 
+## Re-measured after the desktop started drawing (2026-11-17)
+
+| Flavour | Measured | Budget | Margin |
+|---|---|---|---|
+| `test` | 2 172 518 400 B (2071 MiB) | 2200 MiB | 129 MiB (5.9%) |
+
+The light medium grew by 173 MiB, and the reason is worth the space: it now carries
+mesa, because the boot test could otherwise only prove that a compositor had **started**.
+QEMU's default VGA has no DRM render node, niri skips software renderers, and the session
+therefore came up with `outputs=0` - a screen that never changed, with every check green.
+Giving the guest a renderer (and the host a cursor theme, and the desktop a wallpaper)
+is what makes "the desktop draws" an assertion instead of a hope. The ceiling moves with
+the measurement, as the rule at the bottom of this file says; the installer image has not
+been re-measured since the desktop was actually configured, and must be before v0.2.0.
+
 Re-measure with:
 
 ```sh

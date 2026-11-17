@@ -80,7 +80,6 @@ in
         "Mod+Shift+E".quit = [ ];
         "Mod+Shift+P".spawn = [ "poweroff" ];
         "Mod+Shift+O".spawn = [ "reboot" ];
-        "Mod+Shift+L".spawn = [ "swaylock" ];
 
         "Mod+Left".focus-column-left = [ ];
         "Mod+Right".focus-column-right = [ ];
@@ -128,12 +127,15 @@ in
 
   systemd.user.services.swayidle = {
     Unit = {
-      Description = "idle and screen blanking";
+      Description = "Blank the screen when idle";
       PartOf = [ "graphical-session.target" ];
       After = [ "graphical-session.target" ];
     };
     Service = {
-      ExecStart = "${pkgs.swayidle}/bin/swayidle -w timeout 300 '${pkgs.swaylock}/bin/swaylock -f' timeout 600 'niri msg action power-off-monitors' resume 'niri msg action power-on-monitors' before-sleep '${pkgs.swaylock}/bin/swaylock -f'";
+      # Blanks the output after ten minutes and restores it on activity. No lock: the
+      # account has no password, so `swaylock` could only ever ask for something that
+      # does not exist - the screen would go dark and stay dark until a reboot.
+      ExecStart = "${pkgs.swayidle}/bin/swayidle -w timeout 600 'niri msg action power-off-monitors' resume 'niri msg action power-on-monitors'";
       Restart = "on-failure";
     };
     Install.WantedBy = [ "graphical-session.target" ];

@@ -226,6 +226,11 @@ Stated here rather than discovered later:
 - **Autologin and passwordless sudo** are the default, because that is what makes an
   appliance behave like one. Anyone at the keyboard is root. One line in the local
   override file changes it.
+- **No password, no lock screen.** The session logs itself in and `sudo` in `wheel` does
+  not ask, so a password would protect nothing that is not already open; it would only
+  make a lock screen possible. Idle time blanks the display after ten minutes
+  (`swayidle`) and wakes on a key - there is nothing to unlock. Anyone at the keyboard is
+  root, and `easyNix.user.initialPassword` exists if you want an account password anyway.
 - **No Widevine.** ungoogled-chromium cannot play DRM streaming services. Firefox can,
   if you install the plugin.
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.

@@ -73,15 +73,24 @@ run-light:
       -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host
 
-# Boot the installer ISO in a window, applications included (needs a display)
+# Boot the installer ISO in a window, applications included (needs a display and GL)
 run-iso:
     #!/usr/bin/env bash
+    # `-device virtio-vga-gl` with `gl=on`, never QEMU's default VGA.
+    #
+    # The default `-vga std` is a bochs card that mesa has no driver for, and niri skips
+    # software EGL renderers: it starts, cannot allocate a buffer on the device, logs
+    # `no allocator available for device` and runs *headless*. The symptom is the screen
+    # this recipe used to hand you - the autologin line frozen on the console, no
+    # desktop, no error anywhere a human would look. virgl gives the guest a virtio_gpu
+    # renderer niri accepts, and host llvmpipe is enough: what the guest needs is a
+    # device it can allocate from, not speed.
     set -eo pipefail
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso 2>/dev/null | tail -1)
     qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
     ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
     exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot \
-      -display gtk -serial mon:stdio \
+      -device virtio-vga-gl -display gtk,gl=on -serial mon:stdio \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
       -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host
@@ -110,13 +119,28 @@ run-vm:
 
 # Boot the light medium and fail unless userspace and the session report (CI runs this)
 test-light:
-    nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
-    nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-efi
+    #!/usr/bin/env bash
+    # KVM is mandatory (no KVM means software emulation, which times out instead of
+    # failing). The render node is not: when this machine has a GPU, handing it to the
+    # sandbox makes the guest boot with virgl, and the session check then asserts an
+    # output instead of accepting a compositor that draws nothing. Without a GPU the
+    # check says so and stays honest about what it did not prove.
+    set -eo pipefail
+    paths=/dev/kvm
+    [ -e /dev/dri/renderD128 ] && paths="$paths /dev/dri"
+    nix build --option extra-sandbox-paths "$paths" -L .#checks.x86_64-linux.boot-test-bios
+    nix build --option extra-sandbox-paths "$paths" -L .#checks.x86_64-linux.boot-test-efi
 
 # Boot the installer ISO, applications included, and assert the session too (slow)
 test-iso:
-    nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-bios
-    nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-release-efi
+    #!/usr/bin/env bash
+    # Same render-node rule as `test-light`: this is the image that ships, so the one
+    # assertion worth having is that its desktop really draws.
+    set -eo pipefail
+    paths=/dev/kvm
+    [ -e /dev/dri/renderD128 ] && paths="$paths /dev/dri"
+    nix build --option extra-sandbox-paths "$paths" -L .#checks.x86_64-linux.boot-test-release-bios
+    nix build --option extra-sandbox-paths "$paths" -L .#checks.x86_64-linux.boot-test-release-efi
 
 # Partition a virtual disk, install, boot what was installed (needs ~10 GB free, slow)
 test-install:

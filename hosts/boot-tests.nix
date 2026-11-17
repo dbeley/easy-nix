@@ -24,6 +24,16 @@
   nothing about a compositor that is drawing nothing; a client that connects and is
   answered proves the compositor is there.
 
+  Whether it *draws* is a second question, and one this check used to leave unanswered:
+  QEMU's default VGA is a card mesa has no driver for, niri skips software EGL renderers,
+  and the session then comes up headless - marker present, `outputs=0`, screen still
+  showing the boot messages. The desktop was never drawn and every check was green.
+  So when the sandbox is given a DRM render node (`--option extra-sandbox-paths /dev/dri`,
+  which `just test-light` and `just test-iso` pass when this machine has one), QEMU boots
+  with virgl and the marker must report an output. A GPU-less runner leaves the guest
+  nothing to draw on; the harness then says so on stderr rather than calling a headless
+  session a pass.
+
   Both firmware paths are tested for the media: BIOS and EFI are separate boot chains,
   and an image can boot under one and not the other. The install test runs on EFI only,
   because the installer refuses a machine that started in legacy BIOS mode.
@@ -55,7 +65,20 @@ let
     coreutils
     gnugrep
     findutils
+    # Only reached when a render node is handed to the sandbox (see `RENDER_NODE`): the
+    # guest then gets virgl, and the host side of virgl is a mesa driver.
+    mesa
   ];
+
+  # A build sandbox has no `/run/opengl-driver`, which is where a NixOS host points mesa:
+  # left to itself, QEMU cannot find a GBM backend or an EGL vendor inside the sandbox and
+  # dies with `egl: render node init failed`. Naming the paths is what makes
+  # `-display egl-headless` work there.
+  eglEnv = {
+    GBM_BACKENDS_PATH = "${pkgs.mesa}/lib/gbm";
+    LIBGL_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
+    __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+  };
 
   mkBootTest =
     {
@@ -68,6 +91,7 @@ let
     pkgs.runCommand "easy-nix-boot-test-${name}"
       (
         qemuEnv
+        // eglEnv
         // {
           nativeBuildInputs = qemuInputs;
           MARKER = "EASY_NIX_READY";
@@ -80,6 +104,12 @@ let
       ''
         mkdir -p $out
         export ISO="$(find ${image}/iso -name '*.iso' | head -1)"
+        # A GPU, when the caller gave the sandbox one (`--option extra-sandbox-paths
+        # /dev/dri`, which `just test-light` and `just test-iso` do when this machine has
+        # a render node). qemu-run.sh then boots QEMU with virgl and makes the session
+        # assertion say "and it has an output"; without it the session comes up headless
+        # and the harness reports that as a limit, not as a pass.
+        if [ -e /dev/dri/renderD128 ]; then export RENDER_NODE=/dev/dri/renderD128; fi
         # The runner writes serial.log into the current directory, and the build
         # directory is read-only; copying it into $out is what makes a failed boot
         # debuggable after the fact.

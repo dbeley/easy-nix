@@ -19,6 +19,5 @@
   easyNix = {
     enable = true;
     flakeRef = "https://github.com/dbeley/easy-nix.git";
-    user.initialPassword = "easy-nix";
   };
 }

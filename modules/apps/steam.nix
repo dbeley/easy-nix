@@ -8,7 +8,9 @@
 */
 lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
   hardware.graphics = {
-    enable = true;
+    # `enable` is set in `modules/desktop/wayland.nix`: every desktop needs a renderer,
+    # and this module is x86-only, so an aarch64 appliance that imports it as a no-op
+    # would be left without one. Only the 32-bit half is specific to what lives here.
     # A number of Proton titles link 32-bit libraries.
     enable32Bit = lib.mkDefault true;
   };

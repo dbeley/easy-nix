@@ -16,6 +16,14 @@
 }:
 let
   cfg = config.easyNix;
+
+  # From the NixOS artwork set, so the file ships with the distribution and its licence
+  # allows it. Neutral on purpose: a wallpaper that clashes with the applications a user
+  # installs later is worse than a plain one, and a 2560x1440 gradient scales to any
+  # display without looking stretched.
+  wallpaper = "${
+    pkgs.nixos-artwork.wallpapers."gradient-grey"
+  }/share/wallpapers/gradient-grey/contents/images/2560x1440.png";
 in
 {
   # Sessions are started from tty1 rather than by a display manager: one less daemon,
@@ -39,6 +47,26 @@ in
       exec ${lib.getExe' pkgs.niri "niri-session"}
     fi
   '';
+
+  # --- graphics -------------------------------------------------------------
+  # `/run/opengl-driver` is not about 3D quality: niri's TTY backend looks for a render
+  # node and a working EGL/GBM driver before it will drive an output, and it skips
+  # software renderers on purpose ("software EGL renderers are skipped"). Without this,
+  # the compositor starts, listens on its socket, answers `niri msg` - and reports
+  # `outputs=0`, on a screen that never changes.
+  #
+  # It belongs here and not in `modules/apps/steam.nix`, where it was: Steam is x86-only,
+  # so the aarch64 flavour - which has a desktop and no Steam - was left with no renderer
+  # at all. Measured on the light image before the move: same `outputs=0`.
+  hardware.graphics.enable = true;
+
+  # The compositor falls back to a theme called `default` when nothing says otherwise,
+  # and this system installs no such theme: `WARN niri::cursor: error loading xcursor
+  # default@24: no default icon`, which is the oversized pointer. Name one that exists.
+  environment.sessionVariables = {
+    XCURSOR_THEME = "Adwaita";
+    XCURSOR_SIZE = "24";
+  };
 
   # --- portals --------------------------------------------------------------
   xdg.portal = {
@@ -65,7 +93,7 @@ in
     fuzzel # launcher
     mako # notifications
     swayidle
-    swaylock # PAM-authenticated screen lock
+    swaybg # draws the wallpaper: a compositor has no background of its own
     xwayland-satellite
     wl-clipboard
     brightnessctl
@@ -75,9 +103,31 @@ in
     pcmanfm # file manager
     pavucontrol
     xwayland
+    # A cursor theme has to exist on disk: the compositor's fallback is a theme named
+    # `default` that nothing here provides, which draws the oversized pointer. Named by
+    # `XCURSOR_THEME` above.
+    adwaita-icon-theme
   ];
 
-  security.pam.services.swaylock = { };
+  # No lock screen, and no password for the account (see `easyNix.user.initialPassword`,
+  # which defaults to null). A lock screen over an account with no password is a button
+  # that cannot be pressed: `swaylock` asks PAM for a secret that does not exist, and the
+  # only way out is a reboot.
+
+  # --- wallpaper ------------------------------------------------------------
+  # Without this the desktop is a black screen that is indistinguishable from a failed
+  # boot. A user unit rather than a line in the compositor's config, so that replacing
+  # the compositor does not mean rediscovering the wallpaper.
+  systemd.user.services.easy-nix-wallpaper = {
+    description = "Draw the desktop background";
+    partOf = [ "graphical-session.target" ];
+    after = [ "graphical-session.target" ];
+    wantedBy = [ "graphical-session.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.swaybg}/bin/swaybg --mode fill --image ${wallpaper}";
+      Restart = "on-failure";
+    };
+  };
 
   # --- fonts ----------------------------------------------------------------
   fonts = {
@@ -95,6 +145,21 @@ in
       monospace = [ "DejaVu Sans Mono" ];
     };
   };
+
+  # --- the VM a developer boots ---------------------------------------------
+  #
+  # `just run-vm` builds nixpkgs' `system.build.vm`, whose runner leaves QEMU on its
+  # default VGA: a bochs card mesa has no driver for. niri skips software EGL renderers,
+  # so the compositor starts headless and the window shows the boot messages forever -
+  # the desktop never appears, and nothing in it says why. virgl gives the guest a
+  # renderer niri accepts.
+  #
+  # `vmVariant` and not `virtualisation.*` directly: since nixpkgs split `build-vm` out,
+  # the QEMU options live in the nested configuration that produces the runner.
+  virtualisation.vmVariant.virtualisation.qemu.options = [
+    "-device virtio-vga-gl"
+    "-display gtk,gl=on"
+  ];
 
   assertions = [
     {

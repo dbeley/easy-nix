@@ -83,11 +83,14 @@ in
 
     user.initialPassword = mkOption {
       type = types.nullOr types.str;
-      default = "easy-nix";
+      default = null;
       description = ''
-        Initial password for the desktop user, applied only while the account has
-        no password yet. Set to null to leave the account locked and hash your own.
-        Change it at first boot: `passwd`.
+        Password for the desktop user. Null by default, and deliberately so: the
+        session logs itself in, and `sudo` in `wheel` does not ask, so a password here
+        would protect nothing that is not already open - it would only make a lock
+        screen possible, and there is no lock screen.
+        Set it to a string if you want one (it is applied only while the account has
+        no password yet, so `passwd` gives you the last word).
       '';
     };
 

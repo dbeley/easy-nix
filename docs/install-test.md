@@ -45,16 +45,22 @@ nix shell nixpkgs#qemu -c qemu-system-x86_64 \
   -drive if=pflash,format=raw,readonly=on,file="$(nix eval --raw nixpkgs#OVMF.firmware)" \
   -drive file=disk.img,if=virtio,format=raw \
   -cdrom easy-nix-*.iso \
-  -display gtk
+  -device virtio-vga-gl -display gtk,gl=on
 ```
 
 - **UEFI, not BIOS.** The installer refuses to run on a machine that started in legacy
   BIOS mode, so the OVMF firmware line is required. `nix eval --raw nixpkgs#OVMF.firmware`
   is the `OVMF_CODE.fd` file itself, not the directory containing it.
-- **`-display gtk` needs a screen.** On a headless machine use `-display none -vnc :1`
-  and connect a VNC client. There is **no shell on the serial console**: the live image
-  writes its kernel log and its `EASY_NIX_READY` marker to `/dev/ttyS0`, but autologin is
-  on tty1, in a Wayland session. Everything interactive happens on the graphical console.
+- **`-device virtio-vga-gl -display gtk,gl=on`, not a bare `-display gtk`.** QEMU's
+  default VGA is a bochs card that mesa has no driver for, and niri skips software EGL
+  renderers: it starts, cannot allocate on the device, and runs headless, leaving the
+  boot messages frozen on the screen with no error in them. virgl gives the guest a
+  renderer niri accepts; host llvmpipe is enough.
+- **The desktop is the only interface.** There is **no shell on the serial console**:
+  the live image writes its kernel log and its `EASY_NIX_READY` marker to `/dev/ttyS0`,
+  but autologin is on tty1, in a Wayland session. Everything interactive happens on the
+  graphical console. On a machine with no screen at all, `-device virtio-vga-gl -display
+  egl-headless -vnc :1` gives you that console over VNC.
 
 ## 4. Install
 
@@ -82,7 +88,7 @@ nix shell nixpkgs#qemu -c qemu-system-x86_64 \
   -M q35 -m 4096 -smp 4 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$(nix eval --raw nixpkgs#OVMF.firmware)" \
   -drive file=disk.img,if=virtio,format=raw \
-  -display gtk
+  -device virtio-vga-gl -display gtk,gl=on
 ```
 
 No `-cdrom`: it boots from the disk the installer wrote. The desktop should come up
