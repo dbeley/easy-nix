@@ -30,25 +30,9 @@ nix develop          # the checks, nixos-rebuild, qemu for the boot tests
 
 ## Testing a change
 
-Run what CI runs, in increasing order of cost. On a machine with little memory, evaluate
-one host at a time: `nix flake check` evaluates all four at once and wants 12 GB.
-
-```sh
-nix fmt                                              # nixfmt, statix, deadnix, shfmt
-nix build .#checks.x86_64-linux.formatting -L
-nix build .#checks.x86_64-linux.pre-commit-check -L
-nix eval --raw .#evalTargets.<host>                  # one host, the honest target
-nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-test-bios
-```
-
-The boot test is the only thing that proves an image is an image. It boots the light image
-under QEMU and waits for `EASY_NIX_READY` on the serial console, which must appear in
-`result/serial.log` along with the autologin prompt. Without
-`--option extra-sandbox-paths /dev/kvm` QEMU falls back to software emulation and the test
-times out rather than failing.
-
-An ISO build wants about 25 GiB of free space and cannot be done on a small machine; the
-`iso` job in CI exists for that.
+Run what CI runs. `AGENTS.md` has the gates, in increasing order of cost, with what each
+one proves and the KVM requirement the boot tests cannot do without; `justfile` is the
+short version: `nix fmt`, `just check`, `just eval`, `just test-light`.
 
 ## Scope
 

@@ -18,11 +18,10 @@ Not a Nix CLI wrapper. Despite the name, this is an operating system.
 | | |
 |---|---|
 | Base | NixOS unstable, flake-pinned (`flake.lock` committed) |
-| Session | Wayland only: labwc + waybar, foot, fuzzel, mako. `services.xserver.enable` is asserted false |
+| Session | Wayland only: labwc + waybar, foot, fuzzel, mako, swaybg. `services.xserver.enable` is asserted false |
 | Browsers | ungoogled-chromium (Chromium without the Google service integration) |
-| Office | LibreOffice + French spelling and hyphenation |
-| Gaming | Steam, gamescope, gamemode, proton-ge, ntsync |
-| Coding | OpenCode V2 (from the `llm-agents` catalogue flake) |
+| Documents | zathura and poppler-utils; French spelling and hyphenation |
+| Coding | `pi`, a terminal coding agent, from the `llm-agents` catalogue flake |
 | Extra apps | Flathub, with GNOME Software as the store |
 | Updates | Daily configuration fetch, weekly build, applied on reboot, five generations in the boot menu |
 | Reset | `easy-nix-powerwash`: back to factory state without a medium |
@@ -33,22 +32,11 @@ daemon or container runtime anywhere in the image.
 
 ## Install
 
-1. Download the parts from the [releases page](../../releases). GitHub refuses a release
-   asset of 2 GiB or more and this image is about 4 GiB, so it ships as parts of 1900 MiB.
-2. Reassemble it and verify it before writing anything to a disk. `SHA256SUMS` names the
-   assembled image - and also the closure manifests, so ask it for the image by name
-   rather than taking the first column of every line:
-
-   ```sh
-   iso=$(awk '$2 ~ /\.iso$/ {print $2}' SHA256SUMS)
-   cat easy-nix-*.iso.part-* > "$iso"
-   sha256sum -c SHA256SUMS
-   gh attestation verify "$iso" --repo dbeley/easy-nix
-   ```
-
-   `SHA256SUMS.minisig` is present when the release is signed and absent otherwise; the
-   release page says which, and how to check it.
-
+1. Download the parts from the [releases page](https://github.com/dbeley/easy-nix/releases).
+   GitHub refuses a release asset of 2 GiB or more and this image is about 4 GiB, so it
+   ships as parts of 1900 MiB.
+2. Reassemble it and verify it before writing anything to a disk, as described under
+   [Verifying what you downloaded](#verifying-what-you-downloaded).
 3. Write the assembled image to a USB stick **with `dd`**, then boot it: UEFI, Secure Boot
    off. It comes up as a live system, so you can check the screen, the keyboard and the
    wifi before anything is written to a disk. The medium carries the configuration it
@@ -56,6 +44,7 @@ daemon or container runtime anywhere in the image.
 
    ```sh
    lsblk -o NAME,SIZE,TYPE,TRAN,MODEL       # find the stick: TRAN=usb
+   # $iso is set by the reassembly and check below.
    sudo dd if="$iso" of=/dev/sdX bs=4M status=progress conv=fsync
    ```
 4. Either launch **Install easy-nix** from the desktop, or run it yourself:
@@ -80,10 +69,13 @@ sha256sum -c SHA256SUMS
 gh attestation verify "$iso" --repo dbeley/easy-nix
 ```
 
+`SHA256SUMS.minisig` is present when the release is signed and absent otherwise; the
+release page says which, and how to check it.
+
 | Asset | What it is |
 |---|---|
 | `easy-nix-<label>.iso.part-*` | the installer, in parts because GitHub refuses a release asset above 2 GiB |
-| `SHA256SUMS` | the hashes of everything below, and of the image |
+| `SHA256SUMS` | the hashes of everything the release publishes, and of the image |
 | `SHA256SUMS.minisig` | the same file, signed, when the release is signed |
 | `closure-appliance-<system>.json` | every store path of the system an install produces, with its NAR hash and size |
 | `closure-sri-appliance-<system>.tsv` | the same paths and hashes, in the encoding narinfo files use |
@@ -179,17 +171,16 @@ booting the installer again.
 
 ## ARM
 
-Supported, as a **different product**, and marked experimental:
+Supported as a **different product**, and marked experimental:
 
 - There is no aarch64 installer ISO, because NixOS has none for ARM hardware. The
-  deliverable is a flashable SD/eMMC image, built per board (`sd-card` image variant,
-  `nixos-hardware` profiles). Raspberry Pi 4/5 is the assumed target.
+  deliverable is a flashable SD/eMMC image, built per board from the `nixos-hardware`
+  profiles. Raspberry Pi 4/5 is the assumed target.
 
   ```sh
   nix build .#packages.aarch64-linux.sd-card
   ```
 
-- **No Steam.** Steam for Linux is x86-only, so the gaming half does not exist there.
 - No Flathub, on purpose: fewer moving parts on a board nobody will debug.
 - The CI evaluates the ARM configuration but cannot boot-test it; a boot test needs an
   arm64 runner or software emulation slow enough to time out. No ARM artifact is
@@ -209,16 +200,13 @@ Stated here rather than discovered later:
   which is what makes the install *reproducible* - but `nixos-install` works in the
   target's store, which is empty, so the system is assembled there from
   `cache.nixos.org`. On a machine with no wired link, connect the wifi first (`nmtui` in
-  a terminal) or the install stops at its first fetch. Measured, not assumed: the medium
-  carries the runtime closure and the flake's inputs, not the derivations a build needs.
+  a terminal) or the install stops at its first fetch.
 - **Write the image to a whole device, with `dd`.** The medium boots on its own, and from
   a launcher that provides `iso_path` (the convention GRUB2-based launchers such as
   grubfm follow, which the nixpkgs ISO template uses in `findiso=${iso_path}`). **Ventoy
-  is not the tested path**: it does not provide `iso_path`, its GRUB2 mode therefore
-  cannot boot this image at all, and in its normal mode the ISO is reached through a
-  loop device on the stick's exFAT partition - a 4 GiB image read that way is where
-  `SQUASHFS error: Failed to read block` comes from. Every boot test in CI boots the
-  image written to a device.
+  is not the tested path**: it provides no `iso_path`, so its GRUB2 mode cannot boot this
+  image, and in its normal mode the ISO is read through a loop device on the stick - a
+  4 GiB image read that way is where `SQUASHFS error: Failed to read block` comes from.
 - **UEFI only.** Booting goes through systemd-boot, so a machine that starts in legacy
   BIOS mode is refused by the installer instead of being left unbootable. Supporting it
   means a `bios_grub` partition and GRUB bound to a device node, which is a change to
@@ -229,21 +217,20 @@ Stated here rather than discovered later:
 - **No password, no lock screen.** The session logs itself in and `sudo` in `wheel` does
   not ask, so a password would protect nothing that is not already open; it would only
   make a lock screen possible. Idle time blanks the display after ten minutes
-  (`swayidle`) and wakes on a key - there is nothing to unlock. Anyone at the keyboard is
-  root, and `easyNix.user.initialPassword` exists if you want an account password anyway.
-- **No Widevine.** ungoogled-chromium cannot play DRM streaming services, and it is the
-  only browser in the image: a second engine is a second closure to measure and update.
+  (`swayidle`) and wakes on a key - there is nothing to unlock. `easyNix.user.initialPassword`
+  exists if you want an account password anyway.
+- **No Widevine, no account sync.** ungoogled-chromium cannot play DRM streaming
+  services, and it is the only browser in the image: a second engine is a second closure
+  to measure and update.
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.
-- The boot tests assert that the image reaches userspace, that the Wayland session
+- The boot tests assert that the image reaches userspace and that the Wayland session
   reports itself from inside the session (`nix/session-report.sh`), and - separately -
   that an install boots. They do not assert that every application launches.
 - **The install test installs what a user installs.** `checks.x86_64-linux.install-test`
   boots the released configuration plus an unattended install onto an attached disk, on
   EFI only, then boots the disk it has just written. What stays uncovered is a real
   physical disk, the applications once the machine is up, and the network the install
-  still needs: `nixos-install` works in the target's empty store, so it substitutes from
-  `cache.nixos.org` rather than copying the system out of the medium. See
-  [docs/install-test.md](docs/install-test.md).
+  still needs: see [docs/install-test.md](docs/install-test.md).
 
 ## Building
 
@@ -270,18 +257,11 @@ just test-install                            # partition a disk, install, boot i
 just fmt                                     # treefmt: nixfmt, statix, deadnix, shfmt
 ```
 
-An ISO cannot be built on a small machine: expect 4 GB of closure and a lot of RAM.
-The `iso` job in CI exists for that reason.
+An ISO cannot be built on a small machine: expect 25 GB of free space, 4 GB of closure
+and a lot of RAM. The `iso` job in CI exists for that reason.
 
-Do not run `nix flake check` on a machine with little memory: it evaluates all four
-host configurations at once. `just eval` does them one at a time, `just check` builds
-only the formatting checks.
-
-`evalTargets` exists because "does this host evaluate" has four different answers. A
-host that only exists to produce a medium - the two live images and the ARM one - is
-evaluated through its image variant, which is where its filesystem layout comes from.
-Evaluating `system.build.toplevel` on those fails an assertion about a missing root
-filesystem, correctly: there is no such system.
+`just eval` evaluates one host at a time, which is what CI does. The other gates, and
+what each one proves, are in [AGENTS.md](AGENTS.md#testing).
 
 ## Layout
 
@@ -299,9 +279,10 @@ hosts/
 modules/
   base.nix                 locale, networking, audio, nix, the user, the serial console
   disk-layout.nix          by-label partitions, systemd-boot
+  flatpak.nix              Flathub and GNOME Software
   appliance/               options, self-update, notifications, powerwash
   desktop/                 Wayland session, labwc and waybar configuration
-  apps/                    browsers, pi
+  apps/                    browsers, documents, pi
   installer/               live medium settings and easy-nix-install
 nix/
   qemu-run.sh              the boot harness, and the markers it waits for
@@ -311,7 +292,7 @@ nix/
   size-budget.nix          the measured ceiling that turns drift into a red check
 docs/
   budget.md                the measured sizes, and why the numbers are what they are
-  install-test.md          installing in a VM by hand, until it can run in CI
+  install-test.md          installing a VM by hand, past what the automated test covers
 ```
 
 ## Credits

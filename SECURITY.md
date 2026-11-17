@@ -16,10 +16,11 @@ easy-nix builds an operating system image and hands it to you. That shape decide
 **What is trusted**
 
 - The repository, at the revision you clone or that your machine fast-forwards to. The
-  self-update path is `git pull --ff-only` over HTTPS, and nothing else: there is no
-  signature on the update channel beyond TLS and GitHub's own authentication. A compromise
-  of this repository, or of the account that publishes it, is a compromise of every
-  appliance that follows it. That is the largest single assumption in the design.
+  self-update path is `git fetch` followed by `git merge --ff-only` over HTTPS, and
+  nothing else: there is no signature on the update channel beyond TLS and GitHub's own
+  authentication. A compromise of this repository, or of the account that publishes it,
+  is a compromise of every appliance that follows it. That is the largest single
+  assumption in the design.
 - The NixOS and nixpkgs revisions pinned in `flake.lock`, and the binary cache those
   revisions point at.
 - The ISO built from this repository, once you have checked it against the published

@@ -27,8 +27,9 @@ library and it exposes no library API.
 - `modules/desktop/` - labwc and waybar configuration (home-manager) and the
   system-side session; `nix/dpms.sh` and `nix/session-report.sh` are the two scripts it
   starts.
-- `modules/apps/` - one file per application group. Steam is inside a platform guard so
-  the aarch64 flavour can import the same set.
+- `modules/apps/` - one file per application group; the ARM host imports the subset a
+  board can carry.
+- `modules/flatpak.nix` - Flathub as the only second source of packages.
 - `modules/installer/` - `live.nix` makes a configuration bootable and assertable;
   `install.nix` adds `easy-nix-install` and is only on the release medium.
 - `.github/workflows/` - `ci.yml` (lint, evaluate every host, boot-test, build the ISO,
@@ -40,7 +41,8 @@ library and it exposes no library API.
 ## Rules that are not negotiable
 
 1. **Wayland only.** `services.xserver.enable` must stay false; an assertion enforces it.
-   An application that needs X goes through `xwayland-satellite`.
+   An application that needs X goes through the XWayland that `programs.labwc`
+   provides; the X server itself is never installed.
 2. **The update service never destroys work.** `git merge --ff-only`, never
    `reset --hard`, and stop with a notification on local modifications or divergence.
    `reset --hard` is correct in exactly one place: `easy-nix-powerwash`, where the
@@ -55,7 +57,7 @@ library and it exposes no library API.
 
 ## Testing
 
-Do not run `nix flake check` on a machine with little memory: it evaluates all four hosts
+Do not run `nix flake check` on a machine with little memory: it evaluates all five hosts
 at once and wants 12 GB+. Use, in increasing cost:
 
 ```sh
@@ -67,7 +69,7 @@ just test-light          # boots the light image, BIOS and EFI; needs /dev/kvm
 just test-iso            # the same, on the image that ships; slow, needs disk
 ```
 
-`evalTargets` exists because "does this host evaluate" has four different answers. A host
+`evalTargets` exists because "does this host evaluate" has five different answers. A host
 that only exists to produce a medium is evaluated through its image variant, which is
 where its filesystem layout comes from; evaluating `system.build.toplevel` on those fails
 an assertion about a missing root filesystem, correctly - there is no such system.
@@ -86,9 +88,9 @@ the session by `nix/session-report.sh`: userspace alone proves nothing about a
 compositor that is drawing nothing. It needs `MEM=4096`, because a session rendering
 through llvmpipe does not fit in the 2 GiB the userspace-only checks use.
 
-That second marker is also why `home-manager` is imported in `hosts/default.nix`: without
-it, `hosts/<host>/home.nix` and `modules/desktop/labwc.nix` never reached the image, and
-the desktop was whatever the compositor generates for itself on first start.
+That second marker is why `home-manager` is imported in `hosts/default.nix`: it is the
+only path by which `hosts/<host>/home.nix` and `modules/desktop/labwc.nix` reach the
+image.
 
 ## Pitfalls already paid for
 
@@ -126,11 +128,9 @@ the desktop was whatever the compositor generates for itself on first start.
   a unit that only `Wants=` the target, so the target comes up as a dependency.
 - `wlopm` takes an output name and no wildcard, and the name is the compositor's to
   choose; `nix/dpms.sh` asks `wlr-randr` for the list.
-- (historical) `niri-session` re-executes itself through a *login* shell, so anything in
-  `environment.loginShellInit` runs a second time. Guarding a launch on `WAYLAND_DISPLAY`
-  alone recursed forever - the shell re-execed once a second and the desktop never
-  started. An exported variable is what survives the re-exec; see
-  `modules/desktop/wayland.nix`.
+- A login shell re-sources `environment.loginShellInit`, so a guard that starts the
+  session cannot key on `WAYLAND_DISPLAY` alone - an exported flag is what survives the
+  re-source. See `modules/desktop/wayland.nix`.
 - A comment line beginning `# shellcheck` is a shellcheck *directive*, not a comment.
   Wrapping a sentence so that the second line starts with those words fails the build with
   SC1072, and `writeShellApplication` runs shellcheck over the text at build time.
