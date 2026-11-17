@@ -56,7 +56,8 @@ let
         <adaptiveSync>no</adaptiveSync>
       </core>
       <theme>
-        <name>Clearlooks</name>
+        <!-- From nixpkgs' `labwc-themes`, installed by modules/desktop/wayland.nix. -->
+        <name>labAdwaita-dark</name>
         <cornerRadius>6</cornerRadius>
         <font place="ActiveWindow">
           <name>Noto Sans</name><size>10</size>

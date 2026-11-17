@@ -19,7 +19,7 @@ Not a Nix CLI wrapper. Despite the name, this is an operating system.
 |---|---|
 | Base | NixOS unstable, flake-pinned (`flake.lock` committed) |
 | Session | Wayland only: labwc + waybar, foot, fuzzel, mako. `services.xserver.enable` is asserted false |
-| Browsers | Firefox (policy-configured) and ungoogled-chromium |
+| Browsers | ungoogled-chromium (Chromium without the Google service integration) |
 | Office | LibreOffice + French spelling and hyphenation |
 | Gaming | Steam, gamescope, gamemode, proton-ge, ntsync |
 | Coding | OpenCode V2 (from the `llm-agents` catalogue flake) |
@@ -231,8 +231,8 @@ Stated here rather than discovered later:
   make a lock screen possible. Idle time blanks the display after ten minutes
   (`swayidle`) and wakes on a key - there is nothing to unlock. Anyone at the keyboard is
   root, and `easyNix.user.initialPassword` exists if you want an account password anyway.
-- **No Widevine.** ungoogled-chromium cannot play DRM streaming services. Firefox can,
-  if you install the plugin.
+- **No Widevine.** ungoogled-chromium cannot play DRM streaming services, and it is the
+  only browser in the image: a second engine is a second closure to measure and update.
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.
 - The boot tests assert that the image reaches userspace, that the Wayland session
   reports itself from inside the session (`nix/session-report.sh`), and - separately -

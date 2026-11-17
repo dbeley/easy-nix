@@ -90,7 +90,7 @@ run-iso:
     qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
     ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
     exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot \
-      -device virtio-vga-gl -display gtk,gl=on -serial mon:stdio \
+      -device virtio-vga-gl -device virtio-tablet -display gtk,gl=on -serial mon:stdio \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
       -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host

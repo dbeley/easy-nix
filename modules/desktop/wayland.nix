@@ -24,6 +24,42 @@ let
   wallpaper = "${
     pkgs.nixos-artwork.wallpapers."gradient-grey"
   }/share/wallpapers/gradient-grey/contents/images/2560x1440.png";
+
+  # `labwc-themes` is not in nixpkgs, and the compositor's own default is the Openbox
+  # Clearlooks theme, which looks like 2005. `labAdwaita-dark` is the theme the labwc
+  # project ships for exactly this: an Adwaita-shaped dark titlebar that matches the
+  # panel and the wallpapers that come with the distribution.
+  #
+  # Pinned by revision rather than tracked: an image that rebuilds itself nightly off a
+  # moving branch is an image whose desktop changes without anybody deciding it should.
+  labwcThemes = pkgs.stdenvNoCC.mkDerivation {
+    pname = "labwc-themes";
+    version = "6a2e363";
+    src = pkgs.fetchFromGitHub {
+      owner = "labwc";
+      repo = "labwc-themes";
+      rev = "6a2e3634eef03e7f124359ad28ed5da2d931f96d";
+      hash = "sha256-5kCYm3qo7TQif/9aTViDozX/AO+kfoiipTJfPIBcu3g=";
+    };
+    # The theme is a directory of XML and PNGs: no build, just a copy. Upstream's
+    # Makefile runs meson, which is a build system this derivation does not have.
+    dontBuild = true;
+    dontConfigure = true;
+    installPhase = ''
+      mkdir -p $out/share/themes
+      cp -r labAdwaita-dark "$out/share/themes/"
+    '';
+  };
+  # One script rather than a shell line in the unit: the wallpaper path and the mode are
+  # arguments, and a unit file is not the place to discover that they were mis-quoted.
+  desktopManager = pkgs.writeShellApplication {
+    name = "easy-nix-desktop";
+    runtimeInputs = [ pkgs.pcmanfm ];
+    text = ''
+      pcmanfm --set-wallpaper ${wallpaper} --wallpaper-mode=fit
+      exec pcmanfm --desktop
+    '';
+  };
 in
 {
   # Sessions are started from tty1 rather than by a display manager: one less daemon,
@@ -111,8 +147,9 @@ in
     fuzzel # launcher
     mako # notifications
     swayidle
-    swaybg # draws the wallpaper: a compositor has no background of its own
     wlopm # output power management, for `swayidle`
+    labwc-tweaks # GUI for rc.xml: theme, fonts, keybinds
+    labwc-menu-generator # writes menu.xml from the XDG .desktop files
     wayland-utils # `wayland-info`: what the session report asks its questions with
     wl-clipboard
     brightnessctl
@@ -125,6 +162,7 @@ in
     # `default` that nothing here provides, which draws the oversized pointer. Named by
     # `XCURSOR_THEME` above.
     adwaita-icon-theme
+    labwcThemes
   ];
 
   # No lock screen, and no password for the account (see `easyNix.user.initialPassword`,
@@ -132,35 +170,23 @@ in
   # that cannot be pressed: `swaylock` asks PAM for a secret that does not exist, and the
   # only way out is a reboot.
 
-  # --- wallpaper ------------------------------------------------------------
-  # Without this the desktop is a black screen that is indistinguishable from a failed
-  # boot. A user unit rather than a line in the compositor's config, so that replacing
-  # the compositor does not mean rediscovering the wallpaper.
-  systemd.user.services.easy-nix-wallpaper = {
-    description = "Draw the desktop background";
+  # --- wallpaper and the desktop ---------------------------------------------
+  # `pcmanfm --desktop` is the desktop manager: it draws the wallpaper and the icons,
+  # and it is what the "Desktop Preferences" entry in the menus talks to. `swaybg` drew
+  # a background and nothing else, so that dialog answered "the desktop manager is not
+  # running" - measured, on a booted image, and a menu entry that cannot work is worse
+  # than no entry.
+  #
+  # `--set-wallpaper` writes the image into pcmanfm's own configuration and applies it in
+  # the same call, so a fresh account gets a wallpaper instead of a first-run dialog.
+  systemd.user.services.easy-nix-desktop = {
+    description = "Desktop manager: wallpaper and desktop icons";
     partOf = [ "graphical-session.target" ];
     after = [ "graphical-session.target" ];
     wantedBy = [ "graphical-session.target" ];
     serviceConfig = {
-      ExecStart = "${pkgs.swaybg}/bin/swaybg --mode fill --image ${wallpaper}";
+      ExecStart = lib.getExe desktopManager;
       Restart = "on-failure";
-    };
-  };
-
-  # --- fonts ----------------------------------------------------------------
-  fonts = {
-    enableDefaultPackages = true;
-    packages = with pkgs; [
-      noto-fonts
-      noto-fonts-color-emoji
-      noto-fonts-cjk-sans
-      dejavu_fonts
-      liberation_ttf
-      terminus_font
-    ];
-    fontconfig.defaultFonts = {
-      sansSerif = [ "Noto Sans" ];
-      monospace = [ "DejaVu Sans Mono" ];
     };
   };
 
