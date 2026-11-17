@@ -1,10 +1,10 @@
 { pkgs }:
 /*
-  Send a notification to every user that has a session bus right now.
+  Notify every user that has a session bus right now.
 
-  Desktop notification only, never a mail or a log line: the point is that a person
-  looking at the screen learns that an update is waiting. Failure is not an error
-  (a machine with nobody logged in has nothing to notify).
+  A desktop notification, never a mail or a log line: the point is that the person at
+  the screen learns an update is waiting. Failure is not an error - a machine with
+  nobody logged in has nothing to notify.
 */
 pkgs.writeShellApplication {
   name = "easy-nix-notify";
@@ -13,7 +13,6 @@ pkgs.writeShellApplication {
     pkgs.systemd
     pkgs.gawk
     pkgs.coreutils
-    pkgs.util-linux
     pkgs.libnotify
     pkgs.sudo
   ];

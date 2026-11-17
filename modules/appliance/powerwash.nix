@@ -1,20 +1,16 @@
 /*
-  Powerwash: put the machine back to the state it had the day it was installed,
-  without a bootable medium.
+  Powerwash: put the machine back to the state it had the day it was installed, without
+  a bootable medium.
 
-  What it does, in order, and what it deliberately does not:
+  It removes the local override file, resets the configuration checkout to its remote,
+  empties the user's home, and makes the pristine system the next boot target.
 
-    - removes the local override file (that is factory state, and the command has to
-      be the one place allowed to touch it)
-    - resets the configuration checkout to its remote (`reset --hard` is correct
-      *here*: the operator asked for destruction, and the service that runs on its own
-      never does this)
-    - empties the user's home and restores the skeleton
-    - makes the pristine system the next boot target
+  This is the one place destruction is allowed: `reset --hard` and the deletion of the
+  override file are correct *here* because the operator asked for exactly that and the
+  prompt lists what will go. The service that runs unattended never destroys anything.
 
-  It does not reinstall the operating system or reformat the disk: a machine that has
-  to be handed to someone else is reset, not re-provisioned. Reinstalling means booting
-  the ISO, which is the honest boundary to document.
+  It does not reinstall the operating system or reformat the disk: a machine handed to
+  someone else is reset, not re-provisioned. Reinstalling means booting the ISO.
 */
 {
   config,
@@ -31,7 +27,6 @@ let
     runtimeInputs = [
       pkgs.git
       pkgs.coreutils
-      pkgs.util-linux
       pkgs.nixos-rebuild
       pkgs.nix
       pkgs.findutils

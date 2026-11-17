@@ -1,25 +1,22 @@
 /*
   Self-update.
 
-  Shape: the configuration is a git checkout that the machine fast-forwards, and a
-  weekly timer builds the *next* generation without touching the running one. Nothing
-  reboots on its own; the operator gets a notification and reboots when it suits.
+  The configuration is a git checkout the machine fast-forwards; a weekly timer builds
+  the *next* generation without touching the running one. Nothing reboots on its own -
+  the operator is notified and reboots when it suits.
 
-  The two rules that make this safe, and that a naive implementation gets wrong:
+  Two rules make this safe:
 
-    1. Fast-forward or nothing. If the checkout has local modifications, or has
-       diverged from its remote, the update stops and says so. Never `reset --hard`:
-       that turns "I edited a line at /etc/easy-nix" into silent data loss.
-    2. `flake.lock` is bumped upstream, never on the machine. Every appliance runs the
-       same pinned nixpkgs, so "it works on mine" is a statement about a revision and
-       not about a moment. Machines stop writing their own lock file
-       (`--no-write-lock-file`).
+    1. Fast-forward or nothing. Local modifications or a diverged checkout stop the
+       update and say why. Never `reset --hard`: that turns "I edited a line at
+       /etc/easy-nix" into silent data loss.
+    2. `flake.lock` moves upstream, never on the machine (`--no-write-lock-file`), so
+       every appliance built from the same ISO runs the same pinned nixpkgs.
 
-  Ordering is enforced by systemd rather than by hope: building a generation runs the
-  fetch as an `ExecStartPre`, so a rebuild never builds a configuration that is a week
-  older than the remote, and a failing fetch stops the rebuild with the notification
-  that explains why. Machine-specific customisation lives outside the checkout, in
-  `easyNix.localOverrideFile`, imported above everything else.
+  systemd enforces the ordering rather than hope: the upgrade service runs the fetch as
+  an `ExecStartPre`, so it never builds a configuration older than the remote, and a
+  refusing fetch stops the rebuild with the notification that explains it. Machine
+  customisation lives outside the checkout, in `easyNix.localOverrideFile`.
 */
 {
   config,
@@ -31,13 +28,12 @@ let
   cfg = config.easyNix;
   notify = import ./notify.nix { inherit pkgs; };
 
-  # A literal rather than `cfg.localOverrideFile`, deliberately: `imports` is resolved
-  # while the module graph is still being assembled, and reading an option there is a
-  # recursion risk. The option carries the same path for everything that only reads it
-  # (powerwash, the documentation), and the warning below fires if the two ever differ.
+  # A literal rather than `cfg.localOverrideFile`: `imports` is resolved while the module
+  # graph is still being assembled, so reading an option there risks recursion. The
+  # warning below fires if the two ever differ.
   localOverrideFile = "/etc/easy-nix-local.nix";
 
-  # Fast-forward the configuration, then update Flatpaks. Everything that can refuse,
+  # Fast-forward the configuration, then update Flatpaks. Everything that can refuse
   # refuses here, loudly, without touching the operator's work.
   updateConfig = pkgs.writeShellApplication {
     name = "easy-nix-update-config";

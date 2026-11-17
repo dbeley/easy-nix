@@ -14,12 +14,10 @@
   there. `image.modules.<variant>` is the supported way to specialise an image - the
   same idea as `specialisation`, one level up.
 
-  The marker writes to /dev/ttyS0 explicitly. `/dev/console` is not reliable for this:
-  which device it points at depends on the order of the `console=` arguments, so a
-  marker written there can end up nowhere. And `boot.consoleLogLevel` is the option
-  that actually raises kernel verbosity - putting `loglevel=` in `boot.kernelParams`
-  loses to the value nixpkgs appends afterwards, leaving the serial console mute and
-  every boot failure undiagnosable.
+  The marker writes to /dev/ttyS0 explicitly: `/dev/console` points at whichever device
+  the `console=` arguments name last, so a marker written there can go nowhere. Kernel
+  verbosity comes from `boot.consoleLogLevel`, not a `loglevel=` in `boot.kernelParams`,
+  which nixpkgs appends over.
 */
 {
   config,
@@ -42,12 +40,11 @@
     };
 
     # A medium is the one system that has to mount filesystems it did not boot from: the
-    # installer formats an ext4 root and a vfat ESP, and mounting either needs the driver
-    # in this system's closure. A medium has no `fileSystems` of its own, so nothing else
-    # pulls them in, and `mount` then fails on a partition `mkfs` has just written
-    # perfectly - it reports a bad superblock, which sends you looking at the wrong piece
-    # of the machine. Naming them here also makes the build resolve them, so a driver that
-    # does not exist fails the build instead of the installation.
+    # installer writes an ext4 root and a vfat ESP, and mounting either needs the driver in
+    # this system's closure. A medium has no `fileSystems` of its own, so nothing else pulls
+    # them in, and `mount` then reports a bad superblock on a partition `mkfs` has just
+    # written perfectly. Naming them also makes the build fail on a driver that does not
+    # exist, rather than the installation failing later.
     boot.kernelModules = [
       "ext4"
       "vfat"

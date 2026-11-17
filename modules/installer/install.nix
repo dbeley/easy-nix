@@ -16,8 +16,8 @@
        automatic updates are off until the checkout exists.
 
   There is no encryption and no dual boot, and the README says so rather than leaving
-  it to be found out. Adding LUKS is a change of one file (`disk-layout.nix`) plus a
-  line in the partitioning step below.
+  it to be found out. Adding LUKS is a change of `disk-layout.nix` plus a line in the
+  partitioning step below.
 */
 {
   config,
@@ -37,10 +37,9 @@ let
       e2fsprogs
       util-linux
       nixos-install-tools
-      # `nixos-install` is a shell script that shells out to `nix`. Without it here, the
-      # wrapper's PATH has the installer and not the tool the installer calls, and a run
-      # that had already partitioned and mounted the disk dies on "nix: command not found"
-      # two hundred lines in.
+      # `nixos-install` shells out to `nix`; without it here the wrapper's PATH has the
+      # installer and not the tool the installer calls, and the run dies on
+      # "nix: command not found" with the disk already partitioned and mounted.
       config.nix.package
       git
       coreutils
@@ -90,9 +89,9 @@ let
         exit 1
       fi
 
-      # The configuration boots through systemd-boot, which is UEFI only. Refusing here
-      # is the honest outcome: the alternative is a machine that installs happily and
-      # then cannot boot, with no error to explain why.
+      # systemd-boot is UEFI only. Refusing here beats a machine that installs happily and
+      # then cannot boot, with no error to explain why: BIOS boot would need a bios_grub
+      # partition and GRUB on a device node, neither of which this configuration sets.
       if [ ! -d /sys/firmware/efi ]; then
         echo "This machine booted in legacy BIOS mode; easy-nix needs UEFI." >&2
         echo "Booting it from a BIOS-only machine would need a bios_grub partition and" >&2
@@ -146,11 +145,8 @@ let
       sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "$disk"
       sgdisk -n 2:0:0 -t 2:8300 -c 2:NIXROOT "$disk"
       # `sgdisk` returning does not mean the partitions exist yet: the kernel revalidates
-      # the table in the background. Measured in a virtual machine, the mount of the root
-      # partition failed with a bad superblock while the kernel only announced partition 2
-      # a second later - the format had gone to a device node the kernel had not mapped.
-      # `partprobe` is `parted`'s, and this wrapper's PATH carries util-linux instead, so
-      # it was never there to ask; the `|| true` that swallowed the complaint hid that.
+      # the table in the background, and a format sent to a node it has not mapped yet
+      # fails with a bad superblock. Wait for both, bounded, before touching them.
       partx -u "$disk" 2>/dev/null || true
       udevadm settle || true
       for _ in $(seq 1 40); do
@@ -169,26 +165,21 @@ let
 
       echo "==> mounting"
       umount -R /mnt 2>/dev/null || true
-      # Not guaranteed to exist on a medium built from a plain system configuration,
-      # which has no installer profile to create it.
+      # A medium built from a plain system configuration has no installer profile to
+      # create this directory.
       mkdir -p /mnt
       mount "$root" /mnt
-      # After the root, never before: a `boot` directory made on the medium's own /mnt is
-      # hidden the moment the target's root is mounted over it, and the filesystem that was
-      # just created on the target has no `boot` of its own. In the other order the ESP
-      # mount fails with "the mount point does not exist", which reads like a problem with
-      # the ESP and is a problem with the order.
+      # After the root, never before: the filesystem just created on the target has no
+      # `boot` of its own, and a `boot` made on the medium's /mnt would be hidden the moment
+      # the target's root is mounted over it.
       mkdir -p /mnt/boot
       mount "$esp" /mnt/boot
 
       echo "==> installing easy-nix (this takes a while)"
-      # `nixos-install` works in the *target's* store, and a store with no substituters
-      # builds everything from source. The first run that got this far tried to rebuild
-      # glibc and the toolchain in the target and died on a source it could not fetch:
-      # measured afterwards, the medium carries libunistring and pcre2 but no stdenv at
-      # all, and no image should. Naming the cache lets the target substitute what exists -
-      # which is everything except this configuration itself, the one thing the medium
-      # genuinely has and the one thing a build would otherwise have to reconstruct.
+      # `nixos-install` works in the *target's* store, which starts empty, so without a
+      # substituter it builds the system there from source - and the medium carries no
+      # stdenv to borrow. Naming the cache reduces the install to a substitution of
+      # everything except this configuration, the one thing the medium genuinely has.
       nixos-install --flake "$config_dir#$host" --no-root-password \
         --option substituters "https://cache.nixos.org"
 
@@ -224,10 +215,9 @@ in
       RemainAfterExit = true;
       # An install takes as long as it takes; the caller has its own deadline.
       TimeoutStartSec = "infinity";
-      # What the installer says goes to the console as well as to the journal. The
-      # journal of a machine that has been powered off, and whose disk is a temporary
-      # image, cannot be read afterwards - the serial console is the only channel the
-      # test can read, and without this an early refusal is invisible.
+      # What the installer says goes to the console as well as to the journal: the journal
+      # of a machine that has been powered off, whose disk is a temporary image, cannot be
+      # read afterwards. The serial console is the only channel the test has.
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
@@ -236,11 +226,9 @@ in
       # Wait until the network not only exists but resolves something.
       #
       # `network-online.target` is satisfied as soon as NetworkManager reports it, which can
-      # be before the resolver answers. The installer then fails on its first lookup with
-      # "Could not resolve host" fourteen seconds after boot, while a later step of the very
-      # same run was fetching perfectly - so the network was never missing, only early.
-      # Bounded, so a medium without a network still reaches the installer and fails with
-      # the installer's own message rather than with this loop's.
+      # be before the resolver answers, and the installer's first lookup then fails on a
+      # network that was only early. Bounded, so a medium without a network still reaches
+      # the installer and fails with the installer's own message rather than this loop's.
       for _ in $(seq 1 60); do
         getent hosts cache.nixos.org >/dev/null 2>&1 && break
         sleep 1
@@ -257,15 +245,12 @@ in
     '';
   };
 
-  # The configuration being installed, on the medium, and the medium carries it rather than
-  # fetching it: what you boot is what gets installed.
+  # The configuration being installed, carried on the medium rather than fetched: what you
+  # boot is what gets installed.
   #
-  # The install still needs a network, and the pull request that added the install test
-  # measured why: `nixos-install` works in the target's store, which is empty, so it
-  # assembles the system there from the cache rather than copying it from the medium. What
-  # is offline here is the configuration being installed, not the building of it - and an
-  # install of a *custom* configuration needs a network for every NixOS user, official
-  # installer included.
+  # A network is still required to install it. `nixos-install` assembles the system in the
+  # *target's* store, which is empty, from the cache - so what the medium saves is the
+  # configuration itself, the only part no cache can supply.
   environment.etc."easy-nix".source = flakeSelf.outPath;
 
   environment.systemPackages = [
@@ -286,38 +271,26 @@ in
   # Everything the medium must carry to install: what a flake evaluation needs, and the
   # system itself.
   #
-  # This is `isoImage.storeContents`, which is what feeds the store the medium boots with
-  # *and* the registration file that makes its paths valid - read from the nixpkgs source
-  # rather than guessed: `squashfsContents = config.isoImage.storeContents`, and a boot
-  # service running `nix-store --load-db < /nix/store/nix-path-registration`. Verified on a
-  # built image: the system the installer installs is in the squashfs, and in that file,
-  # alongside the medium's own.
+  # This is `isoImage.storeContents`, which feeds the store the medium boots with *and* the
+  # registration file that makes its paths valid (`nix-store --load-db <
+  # /nix/store/nix-path-registration`).
   #
-  # What it does not do, measured: `nixos-install` still builds the target system, because
-  # it works in the *target's* store rather than copying from the medium's. The medium
-  # carries the runtime closure (1695 paths of the 12744 the system's build needs); the
-  # difference is derivations and sources, which no ISO carries and none should. So an
-  # install needs a network, and this option is what keeps that to a substitution rather
-  # than a full rebuild.
+  # It does not make the install offline: `nixos-install` works in the *target's* store, so
+  # the medium's closure only turns a rebuild into a substitution. The rest is derivations
+  # and sources, which no ISO carries.
   image.modules.iso.isoImage.storeContents = lib.unique (
     [ flakeSelf.outPath ]
     ++ (
       let
-        # Everything a flake evaluation needs, the inputs of the inputs included.
+        # Everything a flake evaluation needs, the inputs of the inputs included: evaluating
+        # the configuration makes flake-parts resolve its own lock, which asks for
+        # nix-community/nixpkgs.lib, and a medium missing it fetches it during the install
+        # and dies on a host lookup with the disk already partitioned and mounted.
         #
-        # Listing only this flake's own inputs is not enough, and the failure is obscure:
-        # evaluating the configuration makes flake-parts resolve its own lock, which asks
-        # for nix-community/nixpkgs.lib - an input of an input. Missing from the medium, it
-        # is fetched during the install, so a medium advertised as installable without a
-        # network dies on "Could not resolve host: github.com" with the disk already
-        # partitioned and mounted. Derived from the inputs rather than kept by hand: the
-        # hand-kept list had already lost two of them.
-        # Every input, without filtering on `outPath`: in the pure evaluation that builds
-        # the image an input whose source is not yet in the store has no `outPath`
-        # attribute, so a guard on it drops exactly the inputs that need fetching - silently.
-        # Measured: one of twelve was dropped, and the install then reached for it over the
-        # network. `input.inputs or {}` is for inputs that are not flakes; `isAttrs` is for
-        # inputs that are plain paths.
+        # No filter on `outPath`: in the pure evaluation that builds the image, an input
+        # whose source is not yet in the store has no `outPath`, so the guard would drop
+        # exactly the inputs that need fetching. `input.inputs or {}` is for inputs that are
+        # not flakes; `isAttrs` is for inputs that are plain paths.
         walk =
           set:
           lib.concatLists (
@@ -330,15 +303,14 @@ in
     )
     # And the system itself, so that installing it is a copy rather than a build.
     #
-    # Sharing the applications is not enough: this medium runs `easy-nix-live`, which is a
-    # different system from the `easy-nix` the installer installs, so that system's store
-    # path is absent and `nixos-install` sets out to build it. It then fails on the first
-    # build-time dependency it cannot get - the bootstrap stdenv - which is a message about
-    # a compiler while the fault is an image that does not carry what it installs.
+    # Sharing the applications is not enough: this medium runs `easy-nix-live`, a different
+    # system from the `easy-nix` the installer installs, so that system's store path is
+    # absent and `nixos-install` sets out to build it - then fails on the bootstrap stdenv,
+    # a message about a compiler while the fault is an image that does not carry what it
+    # installs.
     #
-    # The host name is the one the installer installs, from `host="easy-nix"` in the script
-    # below. The installer module is imported by media only, so this costs the light boot
-    # image nothing.
+    # The host name is the one the script above installs; the installer module is imported by
+    # media only, so this costs the light boot image nothing.
     ++ [ flakeSelf.nixosConfigurations.easy-nix.config.system.build.toplevel ]
   );
 }

@@ -37,13 +37,11 @@ in
       example = "/dev/vda";
       description = ''
         Install onto this whole block device at boot, without a prompt and without a
-        screen, then power off. `null`, the default, disables it.
+        screen, then power off. `null` disables it.
 
-        It exists so the install path can be exercised by a machine: the installer is
-        the one part of this system that no test had ever run, because a manual
-        procedure only happens when someone remembers. Nothing that ships sets this -
-        a medium that installed itself over whatever disk was attached is not a medium
-        anyone should hand out.
+        It exists so the install path can be exercised by a machine instead of by a
+        remembered procedure. Nothing that ships sets it: a medium that installed
+        itself over whatever disk was attached is not one to hand out.
       '';
     };
 
@@ -64,11 +62,10 @@ in
       description = ''
         Path to the machine's own overrides, if the operator created one.
 
-        This file is imported at the highest priority and is **never** written or
-        reset by anything in this repository. It is the deliberate answer to the
-        failure mode of a git-driven distribution: an update that overwrites local
-        customisation. Powerwash is the only thing that removes it, and it says so
-        before doing it.
+        Imported at the highest priority and **never** written or reset by anything in
+        this repository - the deliberate answer to a git-driven distribution silently
+        overwriting local customisation. Powerwash is the only thing that removes it,
+        and it says so first.
       '';
     };
 
@@ -85,12 +82,12 @@ in
       type = types.nullOr types.str;
       default = null;
       description = ''
-        Password for the desktop user. Null by default, and deliberately so: the
-        session logs itself in, and `sudo` in `wheel` does not ask, so a password here
-        would protect nothing that is not already open - it would only make a lock
-        screen possible, and there is no lock screen.
-        Set it to a string if you want one (it is applied only while the account has
-        no password yet, so `passwd` gives you the last word).
+        Password for the desktop user. Null by default because it would protect
+        nothing: the session logs itself in, and `sudo` in `wheel` does not ask. A
+        value here only makes a lock screen possible, and there is none.
+
+        Set a string if you want one. It is applied only while the account has no
+        password yet, so `passwd` has the last word.
       '';
     };
 

@@ -1,8 +1,6 @@
 /*
-  The appliance layer: everything that makes this an appliance rather than a
-  machine somebody configured once.
-
-  Order matters only in that options must exist before the services that read them.
+  The appliance layer: what makes this an appliance rather than a machine somebody
+  configured once - self-update, the options hosts switch it with, and powerwash.
 */
 {
   imports = [

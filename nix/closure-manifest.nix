@@ -1,21 +1,11 @@
-# Composition manifest.
+# Composition manifest: the exhaustive list of store paths a system is made of, with their
+# hashes. This is what makes "you can check what you downloaded" verifiable - a third party
+# can compare it against their own store, or against cache.nixos.org, without trusting
+# whoever ran the build.
 #
-# Publishes the exhaustive list of store paths a *system* is made of, with their hash.
-# This is the piece that makes the claim "you can check what you downloaded"
-# verifiable: anyone can compare this manifest against their own store, or against
-# cache.nixos.org, without trusting whoever ran the build.
-#
-# Data source: Nix itself. `exportReferencesGraph` injects the complete graph as JSON
-# into `$NIX_ATTRS_JSON_FILE` at instantiation time. We therefore do NOT call
-# `nix path-info`: that one needs the store database, which the sandbox refuses
-# ("Permission denied" on /nix/var/nix/profiles). This is the method `closureInfo`
-# uses in nixpkgs, and the only one that works in CI.
-#
-#
-# Every file name carries the flavour and the system, e.g.
-# `closure-appliance-x86_64-linux.json`. Two systems are different closures, and
-# identical names meant the manifests silently overwrote each other: the published one
-# described an unstated flavour and did not necessarily match the image next to it.
+# The data comes from Nix itself: `exportReferencesGraph` injects the complete graph as JSON
+# into `$NIX_ATTRS_JSON_FILE` at instantiation time. Not `nix path-info`, which needs the
+# store database and is refused by the sandbox - this is what `closureInfo` does too.
 {
   pkgs,
   toplevel,
@@ -23,15 +13,13 @@
 }:
 
 let
-  # The closure differs per flavour and per architecture, so the manifest does too.
-  # Naming the files after both is what keeps them from colliding, and it is what
-  # tells a reader which image they can verify with them.
+  # The closure differs per flavour and per architecture, so every file name carries both -
+  # otherwise the manifests collide, and a reader cannot tell which image they verify.
   system = pkgs.stdenv.hostPlatform.system;
   suffix = "${flavour}-${system}";
 
-  # The jq filters and the explanatory text live in separate files rather than
-  # inline: inside a Nix `''` string every apostrophe would have to be written
-  # `'''`, which makes the expression unreadable and fragile.
+  # Filters and prose live in their own files rather than inline: inside a Nix `''` string
+  # every apostrophe would have to be written `'''`.
   jsonFilter = pkgs.writeText "easy-nix-closure.jq" ''
     .easyNix
     | map({path, narHash, narSize, references})
@@ -59,18 +47,16 @@ let
     Checking the easy-nix ${flavour} closure for ${system}
     =====================================================
 
-    Every file name carries the flavour and the architecture, because the closure
-    differs between all of them: this set describes the ${flavour} image for
-    ${system}, and no other.
+    This set describes the ${flavour} image for ${system} and no other; everything in it is
+    named after both, because the closure differs between flavours and architectures.
 
-    1. Hashes are provided in two encodings, so that no conversion is needed:
+    1. Hashes come in two encodings, so no conversion is needed:
 
          - `closure-${suffix}.json` -> `.narHash`, in Nix base32 (`sha256:...`);
-         - `closure-sri-${suffix}.tsv` -> column 2, in SRI/base64
-           (`sha256-...=`), the format returned by narinfo files.
+         - `closure-sri-${suffix}.tsv` -> column 2, in SRI/base64 (`sha256-...=`), the
+           format narinfo files use.
 
-       Both denote the same value. The first is literally comparable to a narinfo,
-       the second to the output of `nix path-info`.
+       Both denote the same value.
 
     2. Check the paths that came from nixpkgs, without Nix and without rebuilding
        anything - a plain GET, no trust required:
@@ -81,14 +67,10 @@ let
              | sed -n 's/^NarHash: //p'
          done
 
-       Compare each value against the matching `narHash` in
-       `closure-${suffix}.json`.
-
-       Expect a two-part result: the upstream packages confirm, and the locally
-       derived paths (the NixOS system itself, generated /etc files, systemd units)
-       exist in no binary cache, so no tool can confirm them. The split differs per
-       flavour - run the loop to measure yours rather than quoting a figure from
-       this file, and remember that only rebuilding is authoritative for the rest.
+       Compare each value against the matching `narHash` in `closure-${suffix}.json`.
+       Expect a two-part result: the upstream packages confirm, and the locally derived
+       paths (the NixOS system itself, generated /etc files, systemd units) exist in no
+       binary cache, so nothing can confirm them - only a rebuild is authoritative there.
 
     3. Rebuild the local store database, then verify every hash:
 
@@ -105,16 +87,12 @@ pkgs.runCommand "easy-nix-closure-manifest-${flavour}"
   {
     # Required for `$NIX_ATTRS_JSON_FILE` to exist.
     __structuredAttrs = true;
-    # `toplevel` must be a system: pass `config.system.build.toplevel`. Do not pass an
-    # image, whatever the name of this file suggests. An image's closure stops at the
-    # image file itself - the squashfs inside is compressed, so reference scanning cannot
-    # see the store paths within it, and the manifest comes out as a single entry.
-    # Measured, not guessed: the first CI run to build this reported `paths: 1`.
-    #
-    # A live medium is therefore not describable this way at all: its toplevel does not
-    # evaluate (its filesystem layout comes from the image module, so Nix reports a
-    # missing root filesystem). The manifest published with a release describes the system
-    # an install produces, and the release page says so.
+    # `toplevel` must be a system - pass `config.system.build.toplevel`, never an image
+    # whatever this file's name suggests: an image's closure stops at the image file itself,
+    # because the squashfs inside is compressed and reference scanning cannot see the store
+    # paths within it. A live medium therefore has no such toplevel at all (its layout comes
+    # from the image module, so Nix reports a missing root filesystem), and the manifest
+    # published with a release describes the system an install produces.
     exportReferencesGraph.easyNix = [ toplevel ];
     nativeBuildInputs = [
       pkgs.jq
@@ -127,17 +105,15 @@ pkgs.runCommand "easy-nix-closure-manifest-${flavour}"
     mkdir -p $out
     attrs="$NIX_ATTRS_JSON_FILE"
 
-    # Detailed, stable manifest: path, narHash, size, references.
-    # `-S` sorts the keys and the filter sorts entries by path, so two builds of the
-    # same system produce the same bytes.
+    # `-S` sorts the keys and the filter sorts entries by path, so two builds of the same
+    # system produce the same bytes.
     jq -S -f ${jsonFilter} < "$attrs" > $out/closure-${suffix}.json
 
     # Bare path list, for one-liner comparisons.
     jq -r -f ${pathsFilter} < "$attrs" | sort > $out/store-paths-${suffix}.txt
 
-    # SRI form, directly comparable with a narinfo from cache.nixos.org:
-    # `nix hash convert` is a pure computation, it does not touch the store database
-    # and therefore passes the sandbox.
+    # SRI form, directly comparable with a narinfo. `nix hash convert` is a pure
+    # computation, so it does not touch the store database and passes the sandbox.
     {
       printf '# path\tnarHash (SRI)\tnarSize\n'
       paste \
@@ -148,23 +124,18 @@ pkgs.runCommand "easy-nix-closure-manifest-${flavour}"
         <(jq -r '.easyNix[].narSize' < "$attrs")
     } > $out/closure-sri-${suffix}.tsv
 
-    # Registration in `nix-store --load-db` format: lets a third party rebuild the
-    # store database and verify every hash locally.
+    # `nix-store --load-db` format, so a third party can rebuild the database and verify
+    # every hash locally.
     jq -r -f ${registrationFilter} < "$attrs" | head -n -1 \
       > $out/nix-path-registration-${suffix}.txt
 
-    # Total weight of the closure, in bytes.
     jq -f ${sizeFilter} < "$attrs" > $out/total-nar-size-${suffix}.txt
 
     cp ${readme} $out/README-${suffix}.txt
 
-    # Fingerprint of the manifest itself: the value to pin in a release, and the one a
-    # third party compares after rebuilding the image.
-    #
-    # Bare file names, computed from inside the directory. A reader runs
-    # `sha256sum -c MANIFEST-....sha256` in their download directory, where `$out/...`
-    # does not exist, so recording the store paths here would make the command in
-    # README-<suffix>.txt fail for everyone.
+    # Fingerprint of the manifest itself. Bare file names, computed from inside $out: a
+    # reader runs `sha256sum -c` in their download directory, where `$out/...` does not
+    # exist, so store paths here would make the command in the README fail for everyone.
     (cd $out && sha256sum closure-${suffix}.json store-paths-${suffix}.txt \
       closure-sri-${suffix}.tsv) > $out/MANIFEST-${suffix}.sha256
 

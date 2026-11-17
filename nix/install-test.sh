@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 # Install, then boot what was installed.
 #
-# Two boots, because they answer two questions a single run cannot:
+# Two boots, because they answer two questions one run cannot:
 #
 #   1. did the installer partition a disk and put a system on it? The medium used here
-#      installs itself at boot (`easyNix.autoInstall`) and writes EASY_NIX_INSTALLED on
-#      the serial console when it is done;
+#      installs itself at boot (`easyNix.autoInstall`) and writes EASY_NIX_INSTALLED to the
+#      serial console when it is done;
 #   2. does that system start on its own? The second boot has no medium attached, so
-#      anything on the console comes from the installed machine, which writes
-#      EASY_NIX_READY when it reaches userspace.
+#      anything on the console comes from the installed machine, which writes EASY_NIX_READY
+#      when it reaches userspace.
 #
-# Nothing here needs a screen: `easy-nix-install --disk ... --yes` asks nothing, and
-# both markers are written to /dev/ttyS0 explicitly, never to /dev/console, whose target
-# depends on the order of the `console=` arguments.
+# Nothing here needs a screen: `easy-nix-install --disk ... --yes` asks nothing, and both
+# markers go to /dev/ttyS0 explicitly rather than to /dev/console, whose target depends on
+# the order of the `console=` arguments.
 #
-# The exit status is the whole point. `nix build` on the check that drives this either
-# succeeds - meaning a disk was partitioned, installed onto, and booted - or fails with
-# both serial logs attached.
+# The exit status is the point: `nix build` on the check that drives this either succeeds -
+# a disk was partitioned, installed onto, and booted - or fails with both serial logs.
 set -uo pipefail
 
 : "${ISO:?ISO must point to the medium to install from}"
@@ -33,32 +32,23 @@ MEM="${MEM:-4096}"
 CPUS="${CPUS:-4}"
 
 disk="disk.img"
-# Sparse: the test only pays for what the install writes.
+# Sparse: the test pays only for what the install writes.
 qemu-img create -f raw "$disk" "$DISK_SIZE" >/dev/null
 
-# The resolver the guest is told to use.
-#
-# QEMU's user-mode networking ignores loopback nameservers, and on a CI runner
-# `/etc/resolv.conf` points at exactly that: systemd-resolved's 127.0.0.53 stub. The guest
-# then boots with a working link and no way to resolve anything, which reads as a missing
-# network card - five retries per lookup, "Could not resolve host" for every fetch, and an
-# install that dies fourteen seconds in. An earlier attempt named a public resolver instead
-# and was worse: the runner does not reach it either.
-#
-# So: name the host's own first non-loopback server, and log both sides, so that the next
-# failure of this kind is legible in the step's output rather than inferred from a timeout.
+# The resolver the guest is told to use. QEMU's user-mode networking ignores loopback
+# nameservers, and a CI host's /etc/resolv.conf points at systemd-resolved's 127.0.0.53
+# stub: the guest then has a working link and no way to resolve, which reads as a missing
+# network card - five retries per lookup and an install that dies seconds in. A public
+# resolver is no better where the host cannot reach one, so name the host's own first
+# non-loopback server and log both sides.
 host_nameservers="$(awk '/^[[:space:]]*nameserver/ { print $2 }' /etc/resolv.conf 2>/dev/null)"
 host_dns="$(printf '%s\n' "$host_nameservers" | grep -v '^127\.' | head -1)"
-host_nameservers_display="$(printf '%s\n' "$host_nameservers" | tr '\n' ' ')"
-echo "[install-test] host resolv.conf nameservers: $host_nameservers_display" >&2
+guest_netdev="user,model=virtio-net-pci"
 if [ -n "$host_dns" ]; then
-  echo "[install-test] telling the guest to resolve through $host_dns" >&2
-  guest_netdev="user,model=virtio-net-pci,dns=$host_dns"
-else
-  echo "[install-test] the host has no non-loopback resolver: the guest inherits slirp's" >&2
-  echo "              default, which cannot work from a loopback stub - expect lookups to fail" >&2
-  guest_netdev="user,model=virtio-net-pci"
+  guest_netdev+=",dns=$host_dns"
 fi
+echo "[install-test] host nameservers: $(printf '%s' "$host_nameservers" | tr '\n' ' ')" >&2
+echo "[install-test] guest dns: ${host_dns:-none, so lookups will fail}" >&2
 
 args=(
   -machine q35
@@ -70,13 +60,12 @@ args=(
   -drive "file=$disk,if=virtio,format=raw"
   # The network, because this medium is the light one: it carries the flake and its inputs
   # but not the system it installs, so `nixos-install` has to fetch or build that. The value
-  # is quoted because of its comma: unquoted, shellcheck reads it as an array element
-  # separator.
+  # is quoted because of its comma: unquoted, shellcheck reads it as an array separator.
   -nic "$guest_netdev"
 )
 
-# KVM is the difference between minutes and hours. Without it this test does not fail,
-# it times out - so say which one is happening.
+# KVM is the difference between minutes and hours. Without it this test does not fail, it
+# times out - so say which one is happening.
 if [ -w /dev/kvm ]; then
   args+=(-enable-kvm -cpu host)
   echo "[install-test] KVM enabled" >&2
@@ -86,41 +75,29 @@ else
 fi
 
 wait_for() { # wait_for <log> <marker> <seconds> [marker that means the run is over]
-  # Returns 0 when the marker appears, 2 when the run is over without it, 1 on the
-  # deadline. The distinction matters: an unattended install that refuses something ends
-  # in seconds, and waiting out a forty-five-minute deadline to report it turns a fast
-  # diagnosis into a slow one.
+  # 0 when the marker appears, 2 when the guest stopped without it, 1 on the deadline. The
+  # distinction earns its keep: an unattended install that refuses something ends in
+  # seconds, and waiting out a forty-five-minute deadline would turn a fast diagnosis into a
+  # slow one.
   #
-  # "Over" covers both ways a guest can stop trying: it said why, or it is simply gone.
-  # Both are needed. Watching only the process misses nothing when the machine is still
-  # up and refusing; watching only the marker reports a guest that died before it could
-  # write one. And the process check cannot be `kill -0`: a finished child that nothing
-  # has reaped is a zombie, on which `kill -0` succeeds, so ask for its state.
+  # "Stopped" covers both ways a guest gives up: it said why, or it is simply gone. Watching
+  # only the process misses a machine that is up and refusing; watching only the marker
+  # misses one that died before writing it. And the process check cannot be `kill -0`, which
+  # succeeds on a finished child nobody has reaped, so read its state - with /proc and
+  # builtins only, because the sandbox that runs this carries no procps.
   local log="$1" marker="$2" deadline=$((SECONDS + $3))
   local failure="${4:-}"
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if grep -q -- "$marker" "$log" 2>/dev/null; then
-      return 0
-    fi
-    if [ -n "$failure" ] && grep -q -- "$failure" "$log" 2>/dev/null; then
-      return 2
-    fi
-    # `/proc` and shell builtins only. An earlier version asked `ps` for the process state,
-    # to tell a running child from a zombie that `kill -0` cannot distinguish - and `ps`
-    # belongs to procps, which the sandbox that runs this does not carry. The check then
-    # failed four milliseconds in, before the virtual machine had finished starting, and it
-    # failed on a machine whose shell has `ps` and passed on the one that does not. There is
-    # no external command here to be missing.
+    if grep -q -- "$marker" "$log" 2>/dev/null; then return 0; fi
+    if [ -n "$failure" ] && grep -q -- "$failure" "$log" 2>/dev/null; then return 2; fi
     state=""
     if [ -r "/proc/$qemu_pid/stat" ]; then
-      # stat is one line with no trailing newline, so `read` reports failure on it while
-      # still setting the variable - hence the `|| true`, and no `while`.
+      # One line with no trailing newline, so `read` reports failure while still setting the
+      # variable - hence `|| true`, and no `while`.
       read -r line <"/proc/$qemu_pid/stat" || true
-      # The state is the field after the command name. That name is in parentheses and may
-      # contain spaces, so take everything after the LAST ") " and then up to the next
-      # space. Chopping at the first space of " R 1 1234 ..." yields the empty string, which
-      # this function reads as "the machine is gone" - and it then failed three
-      # milliseconds after starting a virtual machine that was booting perfectly.
+      # The state is the field after the command name, which is in parentheses and may
+      # contain spaces: everything after the LAST ") ", up to the next space. Chopping at
+      # the first space would leave the empty string, which this reads as "gone".
       state="${line##*) }"
       state="${state%% *}"
     fi
@@ -142,10 +119,9 @@ run_qemu() { # run_qemu <log> [extra args...]
 
 fail() { # fail <log> <message>
   echo "[install-test] FAIL: $2" >&2
-  # What the guest said about the installer comes first, because the interesting
-  # failure is usually an early refusal and not the last thing the kernel printed.
-  # Printing it here is the only way it reaches the CI log: a build that fails has its
-  # output directory discarded, so copying the log into $out would be lost.
+  # The guest's words about the installer come first, because the interesting failure is
+  # usually an early refusal rather than the last thing the kernel printed. They go to
+  # stderr because a failing build discards $out, so a log copied there would be lost.
   echo "--- what the guest said about the installer ---" >&2
   grep -aE "easy-nix-autoinstall|easy-nix-install|EASY_NIX_INSTALLED|EASY_NIX_INSTALL_FAILED|not a block device|About to ERASE|partitioning|nixos-install|Error|error:" "$1" | tail -40 >&2 || true
   echo "--- last 60 lines of $1 ---" >&2
