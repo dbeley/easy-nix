@@ -385,6 +385,21 @@ in
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
+  # `pcmanfm-desktop-pref.desktop` runs `pcmanfm --desktop-pref`, which asks a desktop
+  # manager for its settings. There is no desktop manager to ask, and there cannot be
+  # one: `pcmanfm --desktop` segfaults on Wayland (modules/desktop/wayland.nix has the
+  # measurement). The entry is the only thing that turns that into a dialog on screen,
+  # and a button that can only fail is worse than an absent feature.
+  #
+  # `~/.local/share` is searched before the system data dirs, so this shadows the real
+  # file rather than editing a package.
+  xdg.dataFile."applications/pcmanfm-desktop-pref.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Name=Desktop Preferences
+    NoDisplay=true
+  '';
+
   xdg.userDirs = {
     enable = true;
     # Pinned to the value home-state-version 25.11 implies: the default flips at 26.05,

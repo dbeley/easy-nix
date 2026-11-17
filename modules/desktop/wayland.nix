@@ -50,46 +50,6 @@ let
       cp -r labAdwaita-dark "$out/share/themes/"
     '';
   };
-  # One script rather than a shell line in the unit: the wallpaper path and the mode are
-  # arguments, and a unit file is not the place to discover that they were mis-quoted.
-  #
-  # The order below is the whole point. `--set-wallpaper` is not a command that works on
-  # its own: pcmanfm looks for a running desktop manager first and, finding none, puts up
-  # "Desktop manager is not active." and sets nothing (src/pcmanfm.c, the
-  # `desktop == NULL` branch). Run before `--desktop`, as it was, it produced exactly two
-  # symptoms from one cause - the dialog at startup, and a manager that then had no
-  # wallpaper to draw.
-  #
-  # `--set-wallpaper` reaches a running manager over pcmanfm's single-instance socket and
-  # is fire-and-forget: it exits before the manager has answered, so waiting for the
-  # socket is waiting for the manager to exist, not for the wallpaper to be applied. The
-  # socket is named after DISPLAY (`pcmanfm-socket-<host>-<screen>`), so it is globbed
-  # rather than spelled out.
-  desktopManager = pkgs.writeShellApplication {
-    name = "easy-nix-desktop";
-    runtimeInputs = [
-      pkgs.pcmanfm
-      pkgs.coreutils
-    ];
-    text = ''
-      pcmanfm --desktop &
-      manager=$!
-
-      for _ in {1..100}; do
-        compgen -G "''${XDG_RUNTIME_DIR:-/tmp}/pcmanfm-socket-*" >/dev/null && break
-        sleep 0.1
-      done
-
-      # Not fatal: a desktop with no wallpaper beats no desktop, and the failure is
-      # visible in the journal rather than swallowed.
-      pcmanfm --set-wallpaper ${wallpaper} --wallpaper-mode=fit ||
-        echo "easy-nix-desktop: the wallpaper was not applied" >&2
-
-      # `wait` and not `exec`: the manager is the background job above, and its exit
-      # status is what `Restart=on-failure` reacts to.
-      wait "$manager"
-    '';
-  };
 in
 {
   # Sessions are started from tty1 rather than by a display manager: one less daemon,
@@ -210,24 +170,27 @@ in
   # that cannot be pressed: `swaylock` asks PAM for a secret that does not exist, and the
   # only way out is a reboot.
 
-  # --- wallpaper and the desktop ---------------------------------------------
-  # `pcmanfm --desktop` is the desktop manager: it draws the wallpaper and the icons,
-  # and it is what the "Desktop Preferences" entry in the menus talks to. `swaybg` drew
-  # a background and nothing else, so that dialog answered "the desktop manager is not
-  # running" - measured, on a booted image, and a menu entry that cannot work is worse
-  # than no entry.
+  # --- wallpaper --------------------------------------------------------------
+  # `swaybg` and nothing else. It draws an image on the output and has no other job,
+  # which is exactly what this needs.
   #
-  # The wallpaper goes through that manager rather than into a config file, so the
-  # session has no generated `pcmanfm.conf` to keep in step with the image: see the
-  # ordering comment on `desktopManager` above for why it is the second call and not
-  # the first.
-  systemd.user.services.easy-nix-desktop = {
-    description = "Desktop manager: wallpaper and desktop icons";
+  # `pcmanfm --desktop` was here instead, to get desktop icons and a settings dialog
+  # with them. Measured on a real Wayland session - headless labwc, pixman, no DISPLAY -
+  # it dies with SIGSEGV before it starts: exit 139, no desktop manager, therefore no
+  # wallpaper, and "Desktop manager is not active." from every entry that asks one for
+  # its settings. That dialog was not a separate bug; it was the corpse.
+  #
+  # Under X11 the same command works, which is why the temptation to "just verify it"
+  # is a trap: a probe that inherits DISPLAY is testing the host's X server, not this
+  # session. The desktop-preferences entry is hidden in `modules/desktop/labwc.nix`
+  # rather than left to pop that dialog.
+  systemd.user.services.easy-nix-wallpaper = {
+    description = "Wallpaper";
     partOf = [ "graphical-session.target" ];
     after = [ "graphical-session.target" ];
     wantedBy = [ "graphical-session.target" ];
     serviceConfig = {
-      ExecStart = lib.getExe desktopManager;
+      ExecStart = "${lib.getExe pkgs.swaybg} -i ${wallpaper} -m fill";
       Restart = "on-failure";
     };
   };
