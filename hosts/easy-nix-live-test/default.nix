@@ -1,10 +1,9 @@
 /*
-  A deliberately light live image, existing only so a boot test can run somewhere the
-  full image cannot be built or booted (a 2-core VM, a CI runner without much disk).
+  A deliberately light live image: it exists only so a boot test can run where the full
+  image cannot be built or booted (a 2-core VM, a CI runner without much disk).
 
-  It proves that the live medium reaches userspace and that the Wayland session comes
-  up. It proves nothing about the applications, because it does not contain them - the
-  release workflow boots the real image for that.
+  It proves the live medium reaches userspace and the Wayland session comes up. It proves
+  nothing about the applications, because it does not contain them.
 */
 {
   ...
@@ -17,8 +16,7 @@
 
   easyNix = {
     enable = true;
-    # No update services on a medium: there is nothing to update, and the timers would
-    # fire during the boot test and slow it down.
+    # Nothing to update on a medium, and the timers would fire during the boot test.
     update.enable = false;
     update.upgrade = false;
     powerwash.enable = false;

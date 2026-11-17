@@ -20,14 +20,10 @@
   system.stateVersion = stateVersion;
   networking.hostName = lib.mkDefault hostName;
 
-  # The newest stable kernel.
-  #
-  # `mkOverride 1200` rather than a plain value or `mkDefault`, and the number is the
-  # whole point: a board profile that pins its own kernel does so with `mkDefault`
-  # (priority 1000), which wins over this. So x86 gets the latest kernel, and the
-  # Raspberry Pi keeps the downstream kernel it actually needs. With a plain assignment
-  # the two would collide; with `mkDefault` they would collide too, since both would sit
-  # at the same priority.
+  # The newest stable kernel, at priority 1200: a board profile that pins its own kernel
+  # does so with `mkDefault` (1000) and must win, so x86 gets the latest kernel while the
+  # Raspberry Pi keeps the downstream one it needs. A plain assignment or `mkDefault` here
+  # would collide with it instead.
   boot.kernelPackages = lib.mkOverride 1200 pkgs.linuxPackages_latest;
 
   # --- networking -----------------------------------------------------------
@@ -56,17 +52,16 @@
   };
 
   # --- storage hygiene ------------------------------------------------------
-  # Compression in RAM instead of a swap partition: the target is a 4 GB, disk-only
-  # machine, where a swap file is both slow and a threat to the disk's lifespan.
+  # Compression in RAM instead of a swap partition: on a 4 GB disk-only machine a swap
+  # file is both slow and a threat to the disk's lifespan.
   zramSwap.enable = true;
   zramSwap.memoryPercent = lib.mkDefault 50;
 
   boot.tmp.useTmpfs = true;
 
-  # Nothing here imports a ZFS root, and the default value of this option - `true` until
-  # 26.11 - exists for machines that import a pool named `root` at boot. On an appliance
-  # that would be the exact disaster the option guards against, and the option says so
-  # itself in an evaluation warning. Off, without needing a pool to be absent.
+  # The option's default (`true` until 26.11) is for machines importing a pool named
+  # `root` at boot, which on an appliance is the disaster it guards against - and it warns
+  # about that at evaluation time. No ZFS here, so off.
   boot.zfs.forceImportRoot = false;
 
   services.fstrim.enable = true;
@@ -128,10 +123,8 @@
       "wheel"
       "video"
       "audio"
-      # The session report (nix/session-report.sh) writes its marker to /dev/ttyS0,
-      # which is root:tty 0660. Without this the boot test's second assertion depends on
-      # the journal being forwarded to a console it does not own, which is a thing that
-      # works until it does not.
+      # The session report writes its marker to /dev/ttyS0 (root:tty 0660); without this
+      # the boot test's second assertion depends on journal forwarding instead.
       "tty"
     ];
     shell = pkgs.bash;
@@ -145,14 +138,12 @@
   security.sudo.wheelNeedsPassword = false;
 
   # --- the operator's only view of a headless machine -----------------------
-  # The target is a machine someone would otherwise throw away, often with no display
-  # attached, and a boot that says nothing anywhere is a boot nobody can diagnose. A
-  # serial console is that view, and it is also what the install test reads to see an
-  # *installed* system come up - the assertion that procedure exists for.
+  # The target is a machine with no display attached, so the serial console is the only
+  # way to see a boot - and it is what the install test reads to watch an *installed*
+  # system come up.
   #
-  # `consoleLogLevel` rather than `loglevel=` in `kernelParams`: nixpkgs appends its own
-  # `loglevel=` after `kernelParams`, so the kernel argument loses to it and the console
-  # stays mute, which makes every later failure undiagnosable.
+  # `consoleLogLevel`, not `loglevel=` in `kernelParams`: nixpkgs appends its own
+  # `loglevel=` afterwards, the kernel argument loses to it and the console stays mute.
   boot.kernelParams = [ "console=ttyS0,115200" ];
   boot.consoleLogLevel = 7;
 

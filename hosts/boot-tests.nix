@@ -1,46 +1,36 @@
 /*
   Boot tests, and the one test that installs.
 
-  An image that has never been started is a hypothesis, so this is written before the
-  release workflow exists and runs on every push.
+  Three pairs, answering different questions:
 
-  Three pairs, because they answer different questions:
-
-    - `boot-test-*` boots the light image. It has to run everywhere, including a 2-core
-      VM, so it asserts the *live machinery*: kernel, initrd, userspace, then the Wayland
-      session on top. Two markers, in that order: `EASY_NIX_READY` from userspace, then
-      `EASY_NIX_SESSION` from inside the session itself.
-    - `boot-test-release-*` boots the image that actually ships, applications included.
-      It is the expensive one, run by the release workflow on a runner with the RAM and
-      the disk for it. The EFI half carries the session assertion too: the desktop is the
-      product, and the release workflow must not be the first place it is known to work.
+    - `boot-test-*` boots the light image, which has to run anywhere (a 2-core VM), so it
+      asserts the *live machinery*: kernel, initrd, userspace, then the Wayland session on
+      top. Two markers, in that order: `EASY_NIX_READY` from userspace, then
+      `EASY_NIX_SESSION` from inside the session.
+    - `boot-test-release-*` boots the image that ships, applications included. The EFI
+      half carries the session assertion too: the desktop is the product, and the release
+      workflow must not be the first place it is known to work.
     - `install-test` boots the image that installs itself, waits for the installer's
-      marker, then boots the disk it just wrote and waits for the installed machine's
-      own marker. It is the only test that partitions anything, and it runs where the
-      closure is warm.
+      marker, then boots the disk it wrote and waits for the installed machine's own
+      marker. It is the only test that partitions anything.
 
-  The session marker is written by `nix/session-report.sh`, from a systemd user unit in
-  the session, and only after a client gets an answer. A process that is running proves
-  nothing about a compositor that is drawing nothing; a client that connects and is
-  answered proves the compositor is there.
+  `EASY_NIX_SESSION` is written by `nix/session-report.sh` from a systemd user unit, and
+  only after a client gets an answer: a process that is running proves nothing about a
+  compositor that is drawing nothing.
 
-  Whether it *draws* is a second question, and one this check used to leave unanswered:
-  QEMU's default VGA is a card mesa has no driver for, the compositor skipped software EGL renderers,
-  and the session then comes up headless - marker present, `outputs=0`, screen still
-  showing the boot messages. The desktop was never drawn and every check was green.
-  So when the sandbox is given a DRM render node (`--option extra-sandbox-paths /dev/dri`,
-  which `just test-light` and `just test-iso` pass when this machine has one), QEMU boots
-  with virgl and the marker must report an output. A GPU-less runner leaves the guest
-  nothing to draw on; the harness then says so on stderr rather than calling a headless
-  session a pass.
+  Whether it *draws* is a second question. When the sandbox is given a DRM render node
+  (`--option extra-sandbox-paths /dev/dri`, which `just test-light` and `just test-iso`
+  pass when this machine has one), QEMU boots with virgl and the marker must report an
+  output. A GPU-less runner leaves the guest nothing to draw on, and the harness says so
+  on stderr rather than calling a headless session a pass.
 
-  Both firmware paths are tested for the media: BIOS and EFI are separate boot chains,
-  and an image can boot under one and not the other. The install test runs on EFI only,
-  because the installer refuses a machine that started in legacy BIOS mode.
+  Both firmware paths are tested for the media: BIOS and EFI are separate boot chains and
+  an image can boot under one and not the other. The install test is EFI only, because the
+  installer refuses a machine that started in legacy BIOS mode.
 
   The sandbox does not expose /dev/kvm, so the KVM device has to be given to the build
-  explicitly (`--option extra-sandbox-paths /dev/kvm`), otherwise QEMU silently falls
-  back to software emulation and the job times out instead of failing.
+  explicitly (`--option extra-sandbox-paths /dev/kvm`), otherwise QEMU silently falls back
+  to software emulation and the job times out instead of failing.
 */
 {
   inputs,
@@ -161,14 +151,10 @@ in
     name = "efi";
     image = iso;
     mode = "efi";
-    # The light image exists to prove the *live machinery*, and the session is part of
-    # that: `EASY_NIX_READY` comes from a systemd oneshot in modules/base.nix, so it is
-    # written whether the compositor draws a pixel or not. This second marker comes from inside the
-    # session (nix/session-report.sh) and is what makes the claim in the header of this
-    # file true rather than hopeful.
-    #
-    # 4 GiB, not the 2 GiB the userspace-only checks use: a compositor rendering through
-    # llvmpipe needs the room, and an OOM kill would look like a broken session.
+    # `EASY_NIX_READY` comes from a systemd oneshot, so it is written whether the
+    # compositor draws a pixel or not; this second marker comes from inside the session.
+    # 4 GiB rather than the 2 GiB the userspace-only checks use: llvmpipe needs the room,
+    # and an OOM kill would look like a broken session.
     secondMarker = "EASY_NIX_SESSION";
     mem = "4096";
   };
@@ -181,8 +167,8 @@ in
     name = "release-efi";
     image = isoRelease;
     mode = "efi";
-    # Same assertion against the image that ships, applications and all: the release
-    # workflow is not the first place a broken desktop is allowed to surface.
+    # Same assertion against the image that ships: the release workflow is not the first
+    # place a broken desktop is allowed to surface.
     secondMarker = "EASY_NIX_SESSION";
     mem = "4096";
   };

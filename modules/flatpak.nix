@@ -1,12 +1,10 @@
 /*
-  Flathub, for the applications nixpkgs does not carry.
+  Flathub, for the applications nixpkgs does not carry, and deliberately the only second
+  source of packages: every extra source is another thing that can break on a machine
+  nobody administers.
 
-  Deliberately the only second source of packages. Adding a second one is how a
-  "minimal" system stops being minimal, and every extra source is another thing that
-  can be broken on a machine nobody administers.
-
-  The Flathub remote is added by a oneshot service rather than by hand, so a
-  powerwashed or freshly installed machine has it without an operator remembering to.
+  The remote is added by a oneshot service rather than by hand, so a freshly installed or
+  powerwashed machine has it without an operator remembering to.
 */
 { pkgs, ... }:
 {
@@ -28,8 +26,8 @@
 
   systemd.services.flatpak-flathub-remote.wantedBy = [ "multi-user.target" ];
 
-  # A store, so installing software does not require knowing about flatpak. It is
-  # also the only GUI that can find the applications this system does not ship.
+  # A store, so installing software does not require knowing about flatpak, and the only
+  # GUI that can find what this system does not ship.
   environment.systemPackages = with pkgs; [
     flatpak
     gnome-software

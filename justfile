@@ -4,6 +4,10 @@ set dotenv-load := false
 
 host := "easy-nix"
 
+# The two tools every run- recipe needs. Built on first use, once per invocation.
+qemu := `nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1`
+ovmf := `nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1`
+
 # Every recipe name is `<verb>-<noun>`, and both vocabularies are closed:
 #
 #   build-  produce a file under result/, boot nothing
@@ -66,37 +70,26 @@ run-light:
     # rendering through llvmpipe.
     set -eo pipefail
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso-test 2>/dev/null | tail -1)
-    qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
-    ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
-    exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot -nographic \
+    exec "{{qemu}}/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot -nographic \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
-      -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
+      -drive "if=pflash,format=raw,readonly=on,file={{ovmf}}/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host
 
 # Boot the installer ISO in a window, applications included (needs a display and GL)
 run-iso:
     #!/usr/bin/env bash
-    # `-device virtio-vga`, 2D, and deliberately not `virtio-vga-gl`.
+    # `-device virtio-vga`, 2D, and deliberately not `virtio-vga-gl`: on the GL path
+    # wlroots hands the cursor to virgl's hardware-cursor plane and the guest draws it
+    # inverted. On the 2D device it is composited in software and comes out right.
     #
-    # Two different compositors wanted two different things here. niri, the predecessor,
-    # refused software renderers outright: it started, could not allocate a buffer on
-    # QEMU's default bochs VGA, logged `no allocator available for device` and ran
-    # headless, so virgl was the only way to get a desktop at all. labwc is on wlroots
-    # and falls back to pixman, which is why the GL requirement is gone - and why the
-    # pointer had to change with it: on the GL path wlroots hands the cursor to virgl's
-    # hardware-cursor plane, and a virgl guest draws it inverted. On the 2D device the
-    # cursor is composited in software and comes out right.
-    #
-    # `virtio-tablet` stays: absolute pointing, so the guest pointer does not drift away
+    # `virtio-tablet` gives absolute pointing, so the guest pointer does not drift away
     # from the host pointer.
     set -eo pipefail
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso 2>/dev/null | tail -1)
-    qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
-    ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
-    exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot \
+    exec "{{qemu}}/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot \
       -device virtio-vga -device virtio-tablet -display gtk -serial mon:stdio \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
-      -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
+      -drive "if=pflash,format=raw,readonly=on,file={{ovmf}}/FV/OVMF_CODE.fd" \
       -enable-kvm -cpu host
 
 # Boot the self-installing medium with a blank 24 GiB disk; it installs, reports, powers off
@@ -108,11 +101,9 @@ run-install disk="/tmp/easy-nix-disk.img":
     set -eo pipefail
     [ -f "{{disk}}" ] || qemu-img create -f raw "{{disk}}" 24G
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso-install-test 2>/dev/null | tail -1)
-    qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)
-    ovmf=$(nix build --no-link --print-out-paths 'nixpkgs#OVMF.fd' 2>/dev/null | tail -1)
-    exec "$qemu/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot -nographic \
+    exec "{{qemu}}/bin/qemu-kvm" -machine q35 -m 4096 -smp 4 -no-reboot -nographic \
       -cdrom "$(echo "$iso"/iso/*.iso)" \
-      -drive "if=pflash,format=raw,readonly=on,file=$ovmf/FV/OVMF_CODE.fd" \
+      -drive "if=pflash,format=raw,readonly=on,file={{ovmf}}/FV/OVMF_CODE.fd" \
       -drive "file={{disk}},if=virtio,format=raw" \
       -enable-kvm -cpu host
 
@@ -171,8 +162,8 @@ switch host=host:
 update:
     nix flake update
 
-# The names these recipes had before they were grouped by verb. Kept so that a command
-# copied out of an older shell history or an older README still does the right thing.
+# The names these recipes had before they were grouped by verb: an older shell history or
+# README still does the right thing.
 alias iso := build-iso
 alias iso-test := build-light
 alias run := run-light

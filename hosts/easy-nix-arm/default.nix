@@ -1,18 +1,13 @@
 /*
-  ARM flavour.
+  ARM flavour: experimental, and not the same product.
 
-  **Experimental, and not the same product.** On aarch64 there is no installer ISO:
-  NixOS has no ISO for ARM hardware, so the deliverable is a flashable SD/eMMC image
-  built per board. Two consequences worth stating rather than discovering:
+  NixOS has no installer ISO for ARM hardware, so the deliverable is a flashable
+  SD/eMMC image built per board. Steam (x86-only) and Flathub are absent: fewer moving
+  parts on a board nobody will debug.
 
-    - Steam is absent. Steam for Linux is x86-only, so the gaming half of the
-      project does not exist here. `modules/apps/steam.nix` is imported by the x86
-      hosts only.
-    - Flathub is absent: fewer moving parts on a board nobody will debug.
-
-  The kernel, firmware and partition layout come from `nixos-hardware` for the board
-  in question. Raspberry Pi 4/5 is the assumed target; change the imported profile,
-  and the firmware partition offset in the board module, for anything else.
+  The kernel, firmware and partition layout come from `nixos-hardware` for the board in
+  question. Raspberry Pi 4/5 is the assumed target; change the imported profile, and
+  the firmware partition offset in the board module, for anything else.
 */
 {
   config,

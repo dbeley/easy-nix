@@ -1,13 +1,13 @@
 /*
   Disk layout for an installed easy-nix.
 
-  Two partitions, both referenced by **partition label** and never by device node.
-  That is the whole point: the installer can target /dev/sda, /dev/nvme0n1 or
-  /dev/mmcblk0, and every later `nixos-rebuild` still resolves the same filesystems.
-  A config that hardcoded `/dev/sda2` would rebuild a machine whose root is elsewhere.
+  Two partitions, both referenced by **partition label** and never by device node: the
+  installer can target /dev/sda, /dev/nvme0n1 or /dev/mmcblk0, and every later
+  `nixos-rebuild` resolves the same filesystems. `/dev/sda2` would rebuild a machine whose
+  root is elsewhere.
 
-  The installer reproduces this layout with sgdisk + mkfs (see
-  `modules/installer/install.sh`); keep the two in step.
+  `modules/installer/install.nix` reproduces this layout with sgdisk + mkfs; keep the two
+  in step.
 */
 { lib, ... }:
 {

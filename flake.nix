@@ -27,7 +27,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # OpenCode V2 and friends. Not in nixpkgs, so it comes from a catalog flake.
+    # `pi` is not in nixpkgs, so it comes from a catalogue flake.
     llm-agents = {
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -40,8 +40,7 @@
       hosts = import ./hosts { inherit self inputs; };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
-      # aarch64 is a supported target but a different product: see README (no Steam,
-      # SD-card image per board instead of an ISO).
+      # aarch64 is a different product: an SD-card image per board, not an ISO.
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -50,10 +49,8 @@
       imports = [ inputs.treefmt-nix.flakeModule ];
 
       flake = {
-        inherit (hosts) nixosConfigurations;
+        inherit (hosts) nixosConfigurations packages evalTargets;
       };
-
-      flake.evalTargets = hosts.evalTargets;
 
       perSystem =
         {
@@ -78,13 +75,10 @@
           };
 
           checks = {
-            # The formatting gate runs the very wrapper `nix fmt` runs, so the two can
-            # never disagree about how a file should look.
-            #
-            # Listing shfmt here as a separate hook does not work: the git-hooks shfmt
-            # and treefmt's shfmt use different defaults (tabs versus two spaces), so
-            # they fight over the same file and CI goes red while `nix fmt` reports the
-            # tree as clean. One formatter, one gate.
+            # The formatting gate runs the very wrapper `nix fmt` runs, so the two cannot
+            # disagree. shfmt is deliberately not a separate git hook: the two shfmt
+            # defaults differ (tabs versus two spaces) and the hooks then fight treefmt
+            # over the same file, red in CI while `nix fmt` calls the tree clean.
             formatting =
               pkgs.runCommand "treefmt-check"
                 {
@@ -95,8 +89,7 @@
                   chmod -R u+w src
                   rm -rf src/.git
                   cd src
-                  # --no-cache: the build sandbox has no writable HOME for treefmt's
-                  # evaluation cache, and a one-shot check has no use for one anyway.
+                  # The sandbox has no writable HOME for treefmt's cache.
                   treefmt --no-cache --fail-on-change
                   touch $out
                 '';
@@ -126,11 +119,9 @@
                   qemu_kvm
                 ]);
             };
-          # `formatter` is deliberately not set here: treefmt-nix's flakeModule
-          # already points it at the treefmt wrapper, which is what makes `nix fmt`
-          # format Nix, shell and markdown with the right tool each.
+          # `formatter` is deliberately absent: treefmt-nix's flakeModule already points
+          # it at the treefmt wrapper, which is what makes `nix fmt` use the right tool
+          # per language.
         };
-
-      flake.packages = hosts.packages;
     };
 }

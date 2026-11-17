@@ -1,10 +1,8 @@
 /*
   The bootable installer.
 
-  Same applications as an installed machine, plus the install tool - so the medium can
-  be used as a live system to check the machine works (wifi, screen, keyboard) before
-  anything is written to disk. That is cheap insurance on the hardware this project
-  targets.
+  Same applications as an installed machine, plus the install tool, so the medium can be
+  tried as a live system (wifi, screen, keyboard) before anything is written to disk.
 */
 {
   ...
@@ -21,8 +19,7 @@
 
   easyNix = {
     enable = true;
-    # A live medium has no configuration checkout to fast-forward and nothing worth
-    # resetting: the installer creates both on the target. Leaving the timers on would
+    # A medium has no checkout to fast-forward and nothing to reset: the timers would
     # only produce a failed unit and a notification nobody can act on.
     update.enable = false;
     update.upgrade = false;

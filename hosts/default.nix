@@ -1,13 +1,10 @@
 /*
   Host definitions.
 
-  Every host is built through `mkHost`, which wires up:
-    - the shared system base (`modules/base.nix`)
-    - home-manager, with `hosts/<host>/home.nix` as the user configuration
-    - the specialArgs downstream modules expect (`user`, `hostName`, `inputs`, `flakeSelf`)
-
-  `flakeSelf` is the flake itself, so the live image can embed its own source and
-  `nixos-install` can run from the medium without network access to the repository.
+  Every host is built through `mkHost`: the shared base (`modules/base.nix`),
+  home-manager with `hosts/<host>/home.nix`, and the specialArgs downstream modules
+  expect (`user`, `hostName`, `inputs`, `flakeSelf`). `flakeSelf` is the flake itself,
+  so the live image can embed its own source and install without network access.
 */
 { self, inputs }:
 let
@@ -41,20 +38,17 @@ let
         ../modules/base.nix
         inputs.home-manager.nixosModules.home-manager
         {
-          # `home-manager` was an input nothing imported: every `hosts/<host>/home.nix`
-          # and all of `modules/desktop/labwc.nix` were unreachable, and the desktop on the
-          # image was whatever the compositor generates for itself on first start - no keybindings
-          # of ours, no keyboard layout, no mako, no swayidle. Measured, not assumed: the
-          # session came up on a bare compositor, wrote its own default config, and the
-          # marker in nix/session-report.sh (a user unit in labwc.nix) never existed to
-          # run.
+          # home-manager has to be imported here at all: without it every
+          # `hosts/<host>/home.nix` and all of `modules/desktop/labwc.nix` are
+          # unreachable, and the image comes up on whatever the compositor generates
+          # for itself - no keybindings, no layout, no mako, and no unit to write the
+          # boot test's session marker.
           #
-          # `useGlobalPkgs` so that the user configuration is built with the same nixpkgs
-          # as the system - two evaluations of nixpkgs in one image is how a closure
-          # doubles. `useUserPackages` so that its packages land in the user's profile
-          # rather than in the system one: the units and the config files are then the
-          # user's, which is what makes `systemctl --user` and a per-session restart mean
-          # anything.
+          # `useGlobalPkgs` builds the user configuration with the system's nixpkgs; two
+          # evaluations of nixpkgs in one image is how a closure doubles.
+          # `useUserPackages` puts its packages in the user's profile rather than the
+          # system one, which is what makes `systemctl --user` and a per-session
+          # restart mean anything.
           home-manager = {
             useGlobalPkgs = true;
             useUserPackages = true;
@@ -65,17 +59,11 @@ let
       ++ modules;
     };
 
-  # Two instruments the release page publishes instead of a promise:
-  #
-  #   - a closure manifest, listing every store path a system is made of, with its hash
-  #     in both encodings, so a reader can check what they installed against their own
-  #     store or against cache.nixos.org, without trusting whoever ran the build;
-  #   - a size budget, which turns "the image grew" into a red check on the commit that
-  #     caused it, instead of a surprise at the last step of a release job.
-  #
-  # Both are keyed by flavour and system, and only a host that can produce them has
-  # them: a live medium has no evaluable toplevel to describe, and an image-rooted
-  # manifest would describe nothing.
+  # Two instruments published instead of a promise: a closure manifest, so a reader can
+  # check what they installed against their own store or cache.nixos.org, and a size
+  # budget, which turns "the image grew" into a red check on the commit that did it.
+  # Only a host that can produce them has them: a live medium has no evaluable toplevel,
+  # and an image-rooted manifest would describe nothing.
   pkgsFor = system: inputs.nixpkgs.legacyPackages.${system};
 
   mkClosureManifest =
@@ -102,9 +90,9 @@ let
       home = ./easy-nix-live/home.nix;
     };
 
-    # Deliberately light: no browsers, no office suite, no Steam. Exists so a boot
-    # test can run on a machine that cannot build (or boot) the full image. It proves
-    # the live machinery and the Wayland session start, nothing about the applications.
+    # Deliberately light: no applications. It exists so a boot test can run on a machine
+    # that cannot build or boot the full image, and proves the live machinery and the
+    # Wayland session start - nothing about the applications.
     easy-nix-live-test = mkHost {
       hostName = "easy-nix-live-test";
       modules = [ ./easy-nix-live-test ];
@@ -136,18 +124,16 @@ let
       iso-install-test = nixosConfigurations.easy-nix-live-install-test.config.system.build.images.iso;
       vm = nixosConfigurations.easy-nix.config.system.build.vm;
 
-      # The closure of the system an install produces. This is the claim the release page
-      # can actually support, and it is deliberately NOT rooted at the medium: an image's
-      # own closure stops at the ISO file, because the squashfs inside is compressed and
-      # reference scanning cannot see the store paths within it. Measured, not guessed -
-      # the first CI run that built this reported `paths: 1`, the ISO and nothing else.
+      # The closure of the system an install produces. Deliberately not rooted at the
+      # medium: an image's own closure stops at the ISO file, because the squashfs
+      # inside is compressed and reference scanning cannot see the store paths within it.
       closure-manifest-appliance =
         mkClosureManifest "x86_64-linux" "appliance"
           nixosConfigurations.easy-nix.config.system.build.toplevel;
 
-      # Measured ceilings, in MiB, with the reason for each number in docs/budget.md.
-      # The installer one matters most: GitHub refuses a release asset above 2 GiB and
-      # this image is still over that, which is why it ships in parts.
+      # Measured ceilings in MiB; the reason for each number is in docs/budget.md. The
+      # installer one matters most: GitHub refuses an asset above 2 GiB and this image is
+      # still over that, which is why it ships in parts.
       size-budget-installer =
         mkSizeBudget "x86_64-linux" "installer"
           nixosConfigurations.easy-nix-live.config.system.build.images.iso
@@ -167,11 +153,10 @@ in
 
   # What it means to "evaluate this host", one honest answer per host.
   #
-  # A host that only exists to produce an image is evaluated through its image variant:
-  # its plain top-level has no filesystem layout *on purpose*, because the image module
-  # declares one (which is also why `nixos-rebuild switch` on `easy-nix-live` is
-  # meaningless and fails with an assertion about a missing root filesystem). Evaluating
-  # `system.build.toplevel` there proves nothing and fails loudly for the wrong reason.
+  # A media-only host is evaluated through its image variant: its plain toplevel has no
+  # filesystem layout on purpose, because the image module declares one. Evaluating
+  # `system.build.toplevel` there proves nothing and fails for the wrong reason (which is
+  # also why `nixos-rebuild switch` on such a host is meaningless).
   evalTargets = {
     easy-nix = nixosConfigurations.easy-nix.config.system.build.toplevel.drvPath;
     easy-nix-live = nixosConfigurations.easy-nix-live.config.system.build.images.iso.drvPath;
