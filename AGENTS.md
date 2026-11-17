@@ -29,9 +29,11 @@ library and it exposes no library API.
   the aarch64 flavour can import the same set.
 - `modules/installer/` - `live.nix` makes a configuration bootable and assertable;
   `install.nix` adds `easy-nix-install` and is only on the release medium.
-- `.github/workflows/` - `ci.yml` (lint, evaluate every host, boot-test, build the ISO),
-  `release.yml` (tag → build → boot-test the real image → attest → publish),
-  `update-flake-lock.yml`.
+- `.github/workflows/` - `ci.yml` (lint, evaluate every host, boot-test, build the ISO,
+  install and boot it, attest, keep the artifacts), `release.yml` (tag → publish the
+  artifacts of the CI run that built and tested that commit: it never builds),
+  `update-flake-lock.yml` (weekly lock bump, with a full build dispatched on its branch)
+  and `automerge.yml` (merges that bump once that build is green).
 
 ## Rules that are not negotiable
 
@@ -76,7 +78,14 @@ nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-te
 ```
 
 The marker `EASY_NIX_READY` must appear in `result/serial.log`, together with the autologin
-prompt.
+prompt. The EFI check waits for a second marker, `EASY_NIX_SESSION`, written from inside
+the niri session by `nix/session-report.sh`: userspace alone proves nothing about a
+compositor that is drawing nothing. It needs `MEM=4096`, because a session rendering
+through llvmpipe does not fit in the 2 GiB the userspace-only checks use.
+
+That second marker is also why `home-manager` is imported in `hosts/default.nix`: without
+it, `hosts/<host>/home.nix` and `modules/desktop/niri.nix` never reached the image, and the
+desktop was whatever niri generates for itself on first start.
 
 ## Pitfalls already paid for
 
@@ -107,3 +116,14 @@ prompt.
 - A desktop closure does not fit on a CI runner's default disk: the `iso` job frees the
   toolchains it does not use and then verifies the result, because a mid-build "No space
   left on device" looks like a network problem and is not one.
+- `niri-session` re-executes itself through a *login* shell, so anything in
+  `environment.loginShellInit` runs a second time. Guarding a launch on `WAYLAND_DISPLAY`
+  alone recursed forever - the shell re-execed once a second and the desktop never
+  started. An exported variable is what survives the re-exec; see
+  `modules/desktop/wayland.nix`.
+- A comment line beginning `# shellcheck` is a shellcheck *directive*, not a comment.
+  Wrapping a sentence so that the second line starts with those words fails the build with
+  SC1072, and `writeShellApplication` runs shellcheck over the text at build time.
+- `SHA256SUMS` has one line per published file, so `awk '{print $2}' SHA256SUMS` expands to
+  several names and a redirect into it creates one file with spaces in its name. Filter by
+  extension: `awk '$2 ~ /\.iso$/ {print $2}'`.

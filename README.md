@@ -36,20 +36,28 @@ daemon or container runtime anywhere in the image.
 1. Download the parts from the [releases page](../../releases). GitHub refuses a release
    asset of 2 GiB or more and this image is about 4 GiB, so it ships as parts of 1900 MiB.
 2. Reassemble it and verify it before writing anything to a disk. `SHA256SUMS` names the
-   assembled image, so let it name the file you rebuild:
+   assembled image - and also the closure manifests, so ask it for the image by name
+   rather than taking the first column of every line:
 
    ```sh
-   cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
+   iso=$(awk '$2 ~ /\.iso$/ {print $2}' SHA256SUMS)
+   cat easy-nix-*.iso.part-* > "$iso"
    sha256sum -c SHA256SUMS
-   gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
+   gh attestation verify "$iso" --repo dbeley/easy-nix
    ```
 
    `SHA256SUMS.minisig` is present when the release is signed and absent otherwise; the
    release page says which, and how to check it.
 
-3. Write the assembled image to a USB stick, then boot it. It comes up as a live system,
-   so you can check the screen, the keyboard and the wifi before anything is written to a
-   disk. It carries the applications, so the install itself does not need the network.
+3. Write the assembled image to a USB stick **with `dd`**, then boot it: UEFI, Secure Boot
+   off. It comes up as a live system, so you can check the screen, the keyboard and the
+   wifi before anything is written to a disk. The medium carries the configuration it
+   installs, but the install itself needs the network - see "What it does not do".
+
+   ```sh
+   lsblk -o NAME,SIZE,TYPE,TRAN,MODEL       # find the stick: TRAN=usb
+   sudo dd if="$iso" of=/dev/sdX bs=4M status=progress conv=fsync
+   ```
 4. Either launch **Install easy-nix** from the desktop, or run it yourself:
 
    ```sh
@@ -66,9 +74,10 @@ key committed as [`easy-nix.pub`](easy-nix.pub). The signature is checkable with
 GitHub being reachable or trusted, which is the point of having it:
 
 ```sh
-cat easy-nix-*.iso.part-* > "$(awk '{print $2}' SHA256SUMS)"
+iso=$(awk '$2 ~ /\.iso$/ {print $2}' SHA256SUMS)
+cat easy-nix-*.iso.part-* > "$iso"
 sha256sum -c SHA256SUMS
-gh attestation verify easy-nix-*.iso --repo dbeley/easy-nix
+gh attestation verify "$iso" --repo dbeley/easy-nix
 ```
 
 | Asset | What it is |
@@ -192,6 +201,24 @@ Supported, as a **different product**, and marked experimental:
 Stated here rather than discovered later:
 
 - **No disk encryption, no dual boot.** Installing erases the target disk.
+- **Secure Boot must be off.** Nothing signs the boot chain: minisign signs the checksums,
+  the attestation says which commit built the image, and neither is a Secure Boot
+  signature. A machine with Secure Boot enabled refuses the medium before any of that
+  matters.
+- **The install needs the network.** The medium carries the configuration it installs,
+  which is what makes the install *reproducible* - but `nixos-install` works in the
+  target's store, which is empty, so the system is assembled there from
+  `cache.nixos.org`. On a machine with no wired link, connect the wifi first (`nmtui` in
+  a terminal) or the install stops at its first fetch. Measured, not assumed: the medium
+  carries the runtime closure and the flake's inputs, not the derivations a build needs.
+- **Write the image to a whole device, with `dd`.** The medium boots on its own, and from
+  a launcher that provides `iso_path` (the convention GRUB2-based launchers such as
+  grubfm follow, which the nixpkgs ISO template uses in `findiso=${iso_path}`). **Ventoy
+  is not the tested path**: it does not provide `iso_path`, its GRUB2 mode therefore
+  cannot boot this image at all, and in its normal mode the ISO is reached through a
+  loop device on the stick's exFAT partition - a 4 GiB image read that way is where
+  `SQUASHFS error: Failed to read block` comes from. Every boot test in CI boots the
+  image written to a device.
 - **UEFI only.** Booting goes through systemd-boot, so a machine that starts in legacy
   BIOS mode is refused by the installer instead of being left unbootable. Supporting it
   means a `bios_grub` partition and GRUB bound to a device node, which is a change to
@@ -202,8 +229,9 @@ Stated here rather than discovered later:
 - **No Widevine.** ungoogled-chromium cannot play DRM streaming services. Firefox can,
   if you install the plugin.
 - **No touchscreen or tablet configuration** beyond what libinput autodetects.
-- The boot test asserts the image reaches userspace; it does not assert that every
-  application in it launches.
+- The boot tests assert that the image reaches userspace, that the Wayland session
+  reports itself from inside the session (`nix/session-report.sh`), and - separately -
+  that an install boots. They do not assert that every application launches.
 - **The install test uses a light medium.** `checks.x86_64-linux.install-test` partitions
   a disk and boots what it installed, on EFI only, from a medium that is smaller than the
   released one and fetches the system's closure rather than carrying it. The released
@@ -263,7 +291,8 @@ modules/
   apps/                    browsers, office, steam, opencode
   installer/               live medium settings and easy-nix-install
 nix/
-  qemu-run.sh              the boot harness
+  qemu-run.sh              the boot harness, and the markers it waits for
+  session-report.sh        the session announcing itself on the serial console
   install-test.sh          installs onto a disk, then boots what it installed
   closure-manifest.nix     what a system is made of, published with every release
   size-budget.nix          the measured ceiling that turns drift into a red check
