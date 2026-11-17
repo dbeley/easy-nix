@@ -147,15 +147,15 @@ let
 
       # Measured ceilings, in MiB, with the reason for each number in docs/budget.md.
       # The installer one matters most: GitHub refuses a release asset above 2 GiB and
-      # this image is twice that, which is why it ships in parts.
+      # this image is still over that, which is why it ships in parts.
       size-budget-installer =
         mkSizeBudget "x86_64-linux" "installer"
           nixosConfigurations.easy-nix-live.config.system.build.images.iso
-          4100;
+          2750;
       size-budget-test =
         mkSizeBudget "x86_64-linux" "test"
           nixosConfigurations.easy-nix-live-test.config.system.build.images.iso
-          2900;
+          2300;
     };
     aarch64-linux = {
       sd-card = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;

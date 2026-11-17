@@ -29,8 +29,7 @@ A package list is a ranking; it is not a budget.
 Another 574 MiB, and this one is the panel rather than the renderer: waybar is a GTK3
 application, and GTK3 is most of what it adds. The alternative was a compositor with no
 panel, which is the thing the change was made to stop having. The installer image carries
-GTK3 already (browsers, office suite), so its growth is smaller - but it has still not
-been re-measured since the desktop was configured, and that must happen before v0.2.0.
+GTK3 already (browsers, office suite), so its growth is smaller.
 
 The light medium grew by 173 MiB, and the reason is worth the space: it now carries
 mesa, because the boot test could otherwise only prove that a compositor had **started**.
@@ -38,8 +37,33 @@ QEMU's default VGA has no DRM render node, niri skips software renderers, and th
 therefore came up with `outputs=0` - a screen that never changed, with every check green.
 Giving the guest a renderer (and the host a cursor theme, and the desktop a wallpaper)
 is what makes "the desktop draws" an assertion instead of a hope. The ceiling moves with
-the measurement, as the rule at the bottom of this file says; the installer image has not
-been re-measured since the desktop was actually configured, and must be before v0.2.0.
+the measurement, as the rule at the bottom of this file says.
+
+## Re-measured after the applications and the voices left (2026-11-17)
+
+| Flavour | What it is | Measured | Budget | Margin |
+|---|---|---|---|---|
+| `installer` | the bootable medium, applications included | 2 623 733 760 B (2502 MiB) | 2750 MiB | 248 MiB (9.0%) |
+| `test` | the deliberately light live image used by the boot test | 2 205 941 760 B (2103 MiB) | 2300 MiB | 197 MiB (8.6%) |
+
+Both images got smaller, and neither shrank for a cosmetic reason.
+
+The installer image lost Steam, protonup-qt and LibreOffice, which is 1346 MiB of ISO
+against the 3848 MiB measured at v0.1.0. It is still above 2 GiB, so it still ships in
+parts.
+
+Both images lost `speech-dispatcher`, which carries mbrola and the mbrola voice set:
+735 MiB of the appliance closure, and 542 MiB of the light ISO. It is worth naming how
+that was found, because the guess was wrong: removing the GNOME portal changed nothing,
+and `nix why-depends --all` on the appliance closure showed the path running
+system-path -> speech-dispatcher -> mbrola -> mbrola-voices.
+`nixos/modules/services/misc/graphical-desktop.nix` sets `services.speechd.enable` to
+`mkDefault true` for any graphical desktop, so the image was carrying a screen reader and
+a French voice set it does not ship; `modules/desktop/wayland.nix` turns it off.
+
+The ceilings move with those measurements, as the rule below says. They are drift
+detectors, not targets: the next application is measured against them, not squeezed
+under them.
 
 Re-measure with:
 
@@ -53,10 +77,10 @@ A guard that never fires is not a guard: both of these have run on the artifacts
 
 ## Why the installer image is larger than a release asset may be
 
-GitHub refuses any release asset of 2 GiB or more. The installer is nearly twice that,
-and the excess is not padding: it is the applications themselves (browsers, office
-suite, Steam), which is what lets an installation work **without the network**. Removing
-them would trade a documented capability for a smaller download.
+GitHub refuses any release asset of 2 GiB or more. The installer is a little over that,
+and the excess is not padding: it is the applications themselves (a browser, the Qt stack
+`labwc-tweaks` brings, the fonts), which is what lets an installation work **without the
+network**. Removing them would trade a documented capability for a smaller download.
 
 The answer is not to shrink the image but to ship it in parts of 1900 MiB, which the
 release workflow does, with the assembled image attested as one file. The budget above
