@@ -78,13 +78,13 @@ run-iso:
     #!/usr/bin/env bash
     # `-device virtio-vga-gl` with `gl=on`, never QEMU's default VGA.
     #
-    # The default `-vga std` is a bochs card that mesa has no driver for, and niri skips
-    # software EGL renderers: it starts, cannot allocate a buffer on the device, logs
-    # `no allocator available for device` and runs *headless*. The symptom is the screen
-    # this recipe used to hand you - the autologin line frozen on the console, no
-    # desktop, no error anywhere a human would look. virgl gives the guest a virtio_gpu
-    # renderer niri accepts, and host llvmpipe is enough: what the guest needs is a
-    # device it can allocate from, not speed.
+    # The default `-vga std` is a bochs card that mesa has no driver for, and niri -
+    # the compositor before labwc - refused software renderers outright: it started,
+    # could not allocate a buffer on the device, logged `no allocator available for
+    # device` and ran *headless*, leaving the autologin line frozen on the console.
+    # virgl gives the guest a virtio_gpu renderer the compositor accepts, and host
+    # llvmpipe is enough: what the guest needs is a device it can allocate from, not
+    # speed.
     set -eo pipefail
     iso=$(nix build --print-out-paths .#packages.x86_64-linux.iso 2>/dev/null | tail -1)
     qemu=$(nix build --no-link --print-out-paths nixpkgs#qemu_kvm 2>/dev/null | tail -1)

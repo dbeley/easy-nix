@@ -20,12 +20,12 @@
       closure is warm.
 
   The session marker is written by `nix/session-report.sh`, from a systemd user unit in
-  the session, and only after `niri msg` gets an answer. A process that is running proves
+  the session, and only after a client gets an answer. A process that is running proves
   nothing about a compositor that is drawing nothing; a client that connects and is
   answered proves the compositor is there.
 
   Whether it *draws* is a second question, and one this check used to leave unanswered:
-  QEMU's default VGA is a card mesa has no driver for, niri skips software EGL renderers,
+  QEMU's default VGA is a card mesa has no driver for, the compositor skipped software EGL renderers,
   and the session then comes up headless - marker present, `outputs=0`, screen still
   showing the boot messages. The desktop was never drawn and every check was green.
   So when the sandbox is given a DRM render node (`--option extra-sandbox-paths /dev/dri`,
@@ -163,7 +163,7 @@ in
     mode = "efi";
     # The light image exists to prove the *live machinery*, and the session is part of
     # that: `EASY_NIX_READY` comes from a systemd oneshot in modules/base.nix, so it is
-    # written whether niri draws a pixel or not. This second marker comes from inside the
+    # written whether the compositor draws a pixel or not. This second marker comes from inside the
     # session (nix/session-report.sh) and is what makes the claim in the header of this
     # file true rather than hopeful.
     #

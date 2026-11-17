@@ -276,7 +276,7 @@ in
       desktopName = "Install easy-nix";
       comment = "Erase a disk and install easy-nix on it";
       icon = "system-software-install";
-      # The terminal is named explicitly: niri has no concept of `Terminal=true`, so a
+      # The terminal is named explicitly: a Wayland compositor has no concept of `Terminal=true`, so a
       # script that prompts would be launched with no tty at all.
       exec = "${pkgs.foot}/bin/foot -e sudo ${install}/bin/easy-nix-install";
       categories = [ "System" ];

@@ -42,12 +42,12 @@ let
         inputs.home-manager.nixosModules.home-manager
         {
           # `home-manager` was an input nothing imported: every `hosts/<host>/home.nix`
-          # and all of `modules/desktop/niri.nix` were unreachable, and the desktop on the
-          # image was whatever niri generates for itself on first start - no keybindings
+          # and all of `modules/desktop/labwc.nix` were unreachable, and the desktop on the
+          # image was whatever the compositor generates for itself on first start - no keybindings
           # of ours, no keyboard layout, no mako, no swayidle. Measured, not assumed: the
-          # session came up on a straight `niri-session`, wrote its own default config,
-          # and the marker in nix/session-report.sh (a user unit in niri.nix) never
-          # existed to run.
+          # session came up on a bare compositor, wrote its own default config, and the
+          # marker in nix/session-report.sh (a user unit in labwc.nix) never existed to
+          # run.
           #
           # `useGlobalPkgs` so that the user configuration is built with the same nixpkgs
           # as the system - two evaluations of nixpkgs in one image is how a closure
@@ -155,7 +155,7 @@ let
       size-budget-test =
         mkSizeBudget "x86_64-linux" "test"
           nixosConfigurations.easy-nix-live-test.config.system.build.images.iso
-          2200;
+          2900;
     };
     aarch64-linux = {
       sd-card = nixosConfigurations.easy-nix-arm.config.system.build.images.sd-card;

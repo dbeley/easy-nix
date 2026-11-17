@@ -4,8 +4,8 @@
   There is no X server in this system: `services.xserver.enable` is asserted false
   rather than merely left alone, because "Wayland only" is the point of the project and
   a dependency pulling X in would otherwise go unnoticed until a machine booted into it.
-  Applications that need X (Steam, Chromium's older paths) go through
-  `xwayland-satellite`, which is started on demand by niri.
+  Applications that need X (Steam, Chromium's older paths) go through Xwayland, which
+  `programs.labwc` starts for us; there is no X server for them to talk to directly.
 */
 {
   config,
@@ -33,27 +33,34 @@ in
   environment.loginShellInit = lib.mkIf cfg.autologin ''
     # Only the first console, and only once.
     #
-    # The second condition is not belt-and-braces. `niri-session` re-executes itself
-    # through a *login* shell to pick up a clean login environment, and that login shell
-    # sources this file again. Guarding on WAYLAND_DISPLAY alone - which is unset until
-    # niri is already running - recursed instead: measured on the light image, the shell
-    # re-execed once a second, `niri.service` never started, and the screen stayed on a
-    # shell that drew nothing. An exported variable is the only thing that survives that
-    # re-exec, since it is inherited across it.
+    # Both conditions are needed. `WAYLAND_DISPLAY` alone would be enough for a
+    # compositor that never re-sources this file, but the login shell is sourced again by
+    # anything that opens a login shell on this tty - and the guard has to survive that.
+    # The exported variable is inherited across it, which is the only reason it works.
+    #
+    # This was measured, not imagined: with `niri-session`, which re-executes itself
+    # through a login shell, guarding on display alone re-execed the launcher once a
+    # second and the desktop never started.
     if [ -z "''${WAYLAND_DISPLAY:-}" ] &&
       [ -z "''${EASY_NIX_SESSION_LAUNCHED:-}" ] &&
       [ "$(tty)" = "/dev/tty1" ]; then
       export EASY_NIX_SESSION_LAUNCHED=1
-      exec ${lib.getExe' pkgs.niri "niri-session"}
+      # labwc started by hand does not declare the session the way a session manager
+      # would, and `nix/session-report.sh` reports these two rather than inventing them.
+      export XDG_SESSION_TYPE=wayland
+      export XDG_CURRENT_DESKTOP=labwc
+      exec ${lib.getExe pkgs.labwc}
     fi
   '';
 
   # --- graphics -------------------------------------------------------------
-  # `/run/opengl-driver` is not about 3D quality: niri's TTY backend looks for a render
-  # node and a working EGL/GBM driver before it will drive an output, and it skips
-  # software renderers on purpose ("software EGL renderers are skipped"). Without this,
-  # the compositor starts, listens on its socket, answers `niri msg` - and reports
-  # `outputs=0`, on a screen that never changes.
+  # `/run/opengl-driver` is not about 3D quality: a compositor looks for a render node
+  # and a working EGL/GBM driver before it will drive an output, and niri - the previous
+  # choice - skipped software renderers on purpose ("software EGL renderers are
+  # skipped"), so it started, listened on its socket, answered its own IPC and reported
+  # `outputs=0` on a screen that never changed. labwc, on wlroots, would fall back to
+  # pixman and draw; the driver is still what makes it draw at a usable speed, and it is
+  # what the boot test's output assertion exercises.
   #
   # It belongs here and not in `modules/apps/steam.nix`, where it was: Steam is x86-only,
   # so the aarch64 flavour - which has a desktop and no Steam - was left with no renderer
@@ -61,12 +68,21 @@ in
   hardware.graphics.enable = true;
 
   # The compositor falls back to a theme called `default` when nothing says otherwise,
-  # and this system installs no such theme: `WARN niri::cursor: error loading xcursor
-  # default@24: no default icon`, which is the oversized pointer. Name one that exists.
+  # and this system installs no such theme: `error loading xcursor default@24: no
+  # default icon`, which is the oversized pointer. Name one that exists. Same for the
+  # keyboard: niri used to carry `layout = "fr"` in its own config, and wlroots reads the
+  # layout from these instead, so the French AZERTY layout outlives the compositor.
   environment.sessionVariables = {
     XCURSOR_THEME = "Adwaita";
     XCURSOR_SIZE = "24";
+    XKB_DEFAULT_LAYOUT = "fr";
+    XKB_DEFAULT_VARIANT = "oss";
   };
+
+  # The session itself: the package, the desktop entry, the portals, and Xwayland. This
+  # is the supported path - doing it by hand is how `xdg.portal` ends up silently
+  # incomplete for every application that asks for the screen or the clipboard.
+  programs.labwc.enable = true;
 
   # --- portals --------------------------------------------------------------
   xdg.portal = {
@@ -87,14 +103,17 @@ in
   security.pam.services.login.enableGnomeKeyring = true;
 
   # --- session utilities ----------------------------------------------------
+  #
+  # labwc and waybar come from `programs.labwc` below (which also gives the session its
+  # Xwayland); only what it does not cover is listed here.
   environment.systemPackages = with pkgs; [
-    niri
     foot # terminal: Wayland-native, no toolkit to pull in
     fuzzel # launcher
     mako # notifications
     swayidle
     swaybg # draws the wallpaper: a compositor has no background of its own
-    xwayland-satellite
+    wlopm # output power management, for `swayidle`
+    wayland-utils # `wayland-info`: what the session report asks its questions with
     wl-clipboard
     brightnessctl
     playerctl
@@ -102,7 +121,6 @@ in
     slurp
     pcmanfm # file manager
     pavucontrol
-    xwayland
     # A cursor theme has to exist on disk: the compositor's fallback is a theme named
     # `default` that nothing here provides, which draws the oversized pointer. Named by
     # `XCURSOR_THEME` above.

@@ -1,6 +1,6 @@
 { ... }:
 {
-  imports = [ ../../modules/desktop/niri.nix ];
+  imports = [ ../../modules/desktop/labwc.nix ];
 
   home.stateVersion = "25.11";
 

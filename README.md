@@ -18,7 +18,7 @@ Not a Nix CLI wrapper. Despite the name, this is an operating system.
 | | |
 |---|---|
 | Base | NixOS unstable, flake-pinned (`flake.lock` committed) |
-| Session | Wayland only: niri, foot, fuzzel, mako. `services.xserver.enable` is asserted false |
+| Session | Wayland only: labwc + waybar, foot, fuzzel, mako. `services.xserver.enable` is asserted false |
 | Browsers | Firefox (policy-configured) and ungoogled-chromium |
 | Office | LibreOffice + French spelling and hyphenation |
 | Gaming | Steam, gamescope, gamemode, proton-ge, ntsync |
@@ -300,7 +300,7 @@ modules/
   base.nix                 locale, networking, audio, nix, the user, the serial console
   disk-layout.nix          by-label partitions, systemd-boot
   appliance/               options, self-update, notifications, powerwash
-  desktop/                 Wayland session and niri configuration
+  desktop/                 Wayland session, labwc and waybar configuration
   apps/                    browsers, office, steam, opencode
   installer/               live medium settings and easy-nix-install
 nix/

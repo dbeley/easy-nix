@@ -52,10 +52,11 @@ nix shell nixpkgs#qemu -c qemu-system-x86_64 \
   BIOS mode, so the OVMF firmware line is required. `nix eval --raw nixpkgs#OVMF.firmware`
   is the `OVMF_CODE.fd` file itself, not the directory containing it.
 - **`-device virtio-vga-gl -display gtk,gl=on`, not a bare `-display gtk`.** QEMU's
-  default VGA is a bochs card that mesa has no driver for, and niri skips software EGL
-  renderers: it starts, cannot allocate on the device, and runs headless, leaving the
-  boot messages frozen on the screen with no error in them. virgl gives the guest a
-  renderer niri accepts; host llvmpipe is enough.
+  default VGA is a bochs card that mesa has no driver for, and a compositor is free to
+  refuse software renderers - the one this project used before labwc did exactly that.
+  It then starts, cannot allocate on the device, and runs headless, leaving the boot
+  messages frozen on the screen with no error in them. virgl gives the guest a renderer
+  the compositor accepts; host llvmpipe is enough.
 - **The desktop is the only interface.** There is **no shell on the serial console**:
   the live image writes its kernel log and its `EASY_NIX_READY` marker to `/dev/ttyS0`,
   but autologin is on tty1, in a Wayland session. Everything interactive happens on the

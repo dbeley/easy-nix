@@ -20,6 +20,18 @@ A package list is a ranking; it is not a budget.
 |---|---|---|---|
 | `test` | 2 172 518 400 B (2071 MiB) | 2200 MiB | 129 MiB (5.9%) |
 
+## Re-measured after the desktop became labwc + waybar (2026-11-17)
+
+| Flavour | Measured | Budget | Margin |
+|---|---|---|---|
+| `test` | 2 774 138 880 B (2645 MiB) | 2900 MiB | 255 MiB (9.6%) |
+
+Another 574 MiB, and this one is the panel rather than the renderer: waybar is a GTK3
+application, and GTK3 is most of what it adds. The alternative was a compositor with no
+panel, which is the thing the change was made to stop having. The installer image carries
+GTK3 already (browsers, office suite), so its growth is smaller - but it has still not
+been re-measured since the desktop was configured, and that must happen before v0.2.0.
+
 The light medium grew by 173 MiB, and the reason is worth the space: it now carries
 mesa, because the boot test could otherwise only prove that a compositor had **started**.
 QEMU's default VGA has no DRM render node, niri skips software renderers, and the session

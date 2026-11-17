@@ -39,14 +39,14 @@ args=(-machine "$MACHINE" -m "$MEM" -smp "$CPUS" -no-reboot -cdrom "$ISO")
 
 # The guest's GPU, when this environment can give it one.
 #
-# QEMU's default VGA is a bochs card that mesa has no driver for, and niri skips
+# QEMU's default VGA is a bochs card that mesa has no driver for, and the compositor skips
 # software EGL renderers: the compositor then comes up *headless*. It answers on its
 # socket, so a test that only greps for the session marker passes while nothing is
 # drawn - which is exactly how a desktop that never appeared shipped.
 #
 # `-display egl-headless` needs a DRM render node on the *host*, so this is conditional:
 # a GPU-less CI runner has none. When RENDER_NODE is set, the guest gets virgl (a
-# virtio_gpu niri will render on) and the marker below has to report an output; when it
+# virtio_gpu a compositor will render on) and the marker below has to report an output; when it
 # is not, the session marker is the only claim the test makes, and the harness says so
 # out loud instead of implying more.
 if [ -n "${RENDER_NODE:-}" ]; then
@@ -138,7 +138,7 @@ if [ "$found" = 1 ] && { [ -z "$SECOND_MARKER" ] || [ "$second" = 1 ]; }; then
     exit 1
   fi
   if [ -n "$SECOND_MARKER" ] && [ -z "${RENDER_NODE:-}" ]; then
-    echo "NOTE: session asserted without a GPU - no render node here, so niri runs" >&2
+    echo "NOTE: session asserted without a GPU - no render node here, so the compositor runs" >&2
     echo "      headless and 'draws something' is NOT what this run proved." >&2
   fi
   echo "OK: marker seen (mode $MODE)"

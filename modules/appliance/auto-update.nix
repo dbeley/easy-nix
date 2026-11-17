@@ -192,7 +192,7 @@ in
     # service alone: that service fetches first, so asking for two units here would race
     # and could rebuild a configuration the fetch had not reached yet.
     #
-    # The terminal is named explicitly because niri has no concept of `Terminal=true`:
+    # The terminal is named explicitly because a Wayland compositor has no concept of `Terminal=true`:
     # an entry that prompts would otherwise run detached from any tty and the operator
     # would see nothing at all.
     (lib.mkIf (cfg.enable && cfg.update.upgrade) {

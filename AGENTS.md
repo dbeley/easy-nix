@@ -24,7 +24,9 @@ library and it exposes no library API.
   with this file.
 - `modules/appliance/` - the self-update and reset machinery, behind the `easyNix.*`
   options declared in `options.nix`.
-- `modules/desktop/` - niri configuration (home-manager) and the system-side session.
+- `modules/desktop/` - labwc and waybar configuration (home-manager) and the
+  system-side session; `nix/dpms.sh` and `nix/session-report.sh` are the two scripts it
+  starts.
 - `modules/apps/` - one file per application group. Steam is inside a platform guard so
   the aarch64 flavour can import the same set.
 - `modules/installer/` - `live.nix` makes a configuration bootable and assertable;
@@ -80,13 +82,13 @@ nix build --option extra-sandbox-paths /dev/kvm -L .#checks.x86_64-linux.boot-te
 
 The marker `EASY_NIX_READY` must appear in `result/serial.log`, together with the autologin
 prompt. The EFI check waits for a second marker, `EASY_NIX_SESSION`, written from inside
-the niri session by `nix/session-report.sh`: userspace alone proves nothing about a
+the session by `nix/session-report.sh`: userspace alone proves nothing about a
 compositor that is drawing nothing. It needs `MEM=4096`, because a session rendering
 through llvmpipe does not fit in the 2 GiB the userspace-only checks use.
 
 That second marker is also why `home-manager` is imported in `hosts/default.nix`: without
-it, `hosts/<host>/home.nix` and `modules/desktop/niri.nix` never reached the image, and the
-desktop was whatever niri generates for itself on first start.
+it, `hosts/<host>/home.nix` and `modules/desktop/labwc.nix` never reached the image, and
+the desktop was whatever the compositor generates for itself on first start.
 
 ## Pitfalls already paid for
 
@@ -102,8 +104,9 @@ desktop was whatever niri generates for itself on first start.
 - `boot.kernelPackages` is set with `lib.mkOverride 1200` in `modules/base.nix` so that a
   board profile pinning its own kernel with `mkDefault` wins. A plain assignment would
   collide; `mkDefault` would collide too, both sitting at the same priority.
-- niri has no concept of `Terminal=true`: a desktop entry that prompts must name its
-  terminal (`foot -e …`) or it runs with no tty and does nothing visible.
+- A Wayland compositor has no concept of `Terminal=true`: a desktop entry that prompts
+  must name its terminal (`foot -e …`) or it runs with no tty and does nothing
+  visible.
 - `environment.systemPackages` twice in the same module is a conflict, not a merge.
 - Inside a Nix `''` string, a shell `''${VAR}` needs escaping and `$VAR` does not.
   Shellcheck passing does not prove the escaping worked - read the generated script
@@ -117,7 +120,13 @@ desktop was whatever niri generates for itself on first start.
 - A desktop closure does not fit on a CI runner's default disk: the `iso` job frees the
   toolchains it does not use and then verifies the result, because a mid-build "No space
   left on device" looks like a network problem and is not one.
-- `niri-session` re-executes itself through a *login* shell, so anything in
+- `graphical-session.target` has `RefuseManualStart=yes`: `systemctl --user start
+  graphical-session.target` fails with "may be requested by dependency only", and every
+  unit `WantedBy` it then never runs. labwc's autostart starts `easy-nix-session.service`,
+  a unit that only `Wants=` the target, so the target comes up as a dependency.
+- `wlopm` takes an output name and no wildcard, and the name is the compositor's to
+  choose; `nix/dpms.sh` asks `wlr-randr` for the list.
+- (historical) `niri-session` re-executes itself through a *login* shell, so anything in
   `environment.loginShellInit` runs a second time. Guarding a launch on `WAYLAND_DISPLAY`
   alone recursed forever - the shell re-execed once a second and the desktop never
   started. An exported variable is what survives the re-exec; see
